@@ -3,6 +3,7 @@
     python evals/run_comparison.py                       # all 18 cases, both architectures
     python evals/run_comparison.py --cases DS-06,FX-04   # a subset
     python evals/run_comparison.py --resume              # continue an interrupted run (e.g. after a quota limit)
+    python evals/run_comparison.py --report-only         # rebuild summary.md / results.csv from saved runs, no model calls
 
 Writes, under evals/results/<model>/:
     runs.jsonl    every run in full (decision, ledger, guardrail events, usage) - the audit trail
@@ -22,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 import time
@@ -39,7 +41,7 @@ from src.models import AnalysisResult  # noqa: E402
 from src.solution import analyze_request  # noqa: E402
 
 FIXTURE_DIR = ROOT / "evals" / "fixtures" / "data"
-FIXTURE_API = "http://127.0.0.1:8002"
+FIXTURE_API = os.getenv("FIXTURE_VENDOR_RISK_BASE_URL") or "http://127.0.0.1:8002"   # dedicated mock API for the fixture snapshot
 SPECIALISTS = {"Security", "Privacy", "Legal", "Finance", "CFO"}
 GROUNDING_EVENTS = {"ungrounded_finding", "unsupported_figure", "ungrounded_overlap", "ungrounded_injection_claim",
                     "approval_language", "rationale_replaced"}
@@ -131,8 +133,11 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
         writer.writeheader()
         writer.writerows(sorted(rows, key=lambda r: (r["case_id"], r["architecture"], r["trial"])))
 
-    scored = [r for r in rows if not r["degraded"]]
     archs = [a for a in ("single", "staged") if any(r["architecture"] == a for r in rows)]
+    # Only compare cases that every architecture completed, so an interrupted run cannot skew the table.
+    complete = {c["case_id"] for c in cases
+                if all(any(r["case_id"] == c["case_id"] and r["architecture"] == a and not r["degraded"] for r in rows) for a in archs)}
+    scored = [r for r in rows if not r["degraded"] and r["case_id"] in complete]
     by_arch = {a: [r for r in scored if r["architecture"] == a] for a in archs}
     names = {"single": "A - single agent", "staged": "B - staged (analyst + reviewer)"}
 
@@ -161,8 +166,8 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
         ("Model call retries (invalid JSON / rate limit / 5xx)", lambda a: str(sum(r["llm_retries"] for r in by_arch[a]))),
     ]
     lines = [f"# Evaluation summary - {model}", "",
-             f"{len(cases)} cases x {len(archs)} architectures, same cases, same tools, same policy engine, same scoring. "
-             f"Runs scored: {len(scored)}; runs excluded because the model was unavailable: {len(rows) - len(scored)}.", "",
+             f"{len(complete)} of {len(cases)} cases completed on every architecture; same cases, same tools, same policy "
+             f"engine, same scoring. Runs scored: {len(scored)}.", "",
              "| Metric | " + " | ".join(names[a] for a in archs) + " |", "|---|" + "---:|" * len(archs)]
     lines += [f"| {label} | " + " | ".join(fn(a) for a in archs) + " |" for label, fn in metric_rows]
 
@@ -190,6 +195,7 @@ def main() -> None:
     parser.add_argument("--cases", default="all", help="'all', or comma-separated case ids (e.g. DS-01,FX-04)")
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--resume", action="store_true", help="keep existing runs in the output folder and only run what is missing")
+    parser.add_argument("--report-only", action="store_true", help="rebuild the reports from runs.jsonl without calling the model")
     parser.add_argument("--out", default=None, help="output folder (default: evals/results/<model>)")
     args = parser.parse_args()
 
@@ -206,6 +212,12 @@ def main() -> None:
     cases = [c for c in all_cases if wanted is None or c["case_id"] in wanted]
     architectures = args.architectures.split(",")
     public = {c["request_id"]: c["expectations"] for c in json.loads((ROOT / "evals" / "public_cases.json").read_text(encoding="utf-8"))}
+
+    if args.report_only:
+        rows = [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        write_reports(out_dir, rows, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in rows)], model)
+        print(f"Rebuilt {out_dir.relative_to(ROOT)}/summary.md and results.csv from {len(rows)} saved runs")
+        return
 
     rows: list[dict] = []
     if args.resume and runs_path.is_file():
