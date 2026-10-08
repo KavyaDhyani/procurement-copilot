@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from evals._support import vendor_api
+from src.config import Settings
 from src.contracts import ProcurementDecision
 from src.solution import handle_request
 
@@ -71,35 +73,37 @@ def main() -> None:
     rows = []
     print(f"\nPublic evaluation - architecture={args.architecture}\n")
 
-    for case in cases:
-        start = time.perf_counter()
-        try:
-            raw = handle_request(case['request_id'], architecture=args.architecture)
-            decision = raw if isinstance(raw, ProcurementDecision) else ProcurementDecision.model_validate(raw)
-            latency_ms = (time.perf_counter() - start) * 1000
-            failures = evaluate(decision, case['expectations'])
-            passed = not failures
-            tel = decision.telemetry
-            print(f"{'PASS' if passed else 'FAIL'}  {case['case_id']}  {case['title']}  ({latency_ms:.0f} ms)")
-            for f in failures:
-                print(f"      - {f}")
-            rows.append({
-                'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
-                'passed_minimum_checks':passed, 'latency_ms':round(latency_ms,1),
-                'llm_calls': tel.llm_calls if tel else '', 'tool_calls': tel.tool_calls if tel else '',
-                'failures':' | '.join(failures)
-            })
-        except NotImplementedError as exc:
-            print(f"STOP  {exc}")
-            return
-        except Exception as exc:
-            latency_ms = (time.perf_counter() - start) * 1000
-            print(f"ERROR {case['case_id']}  {type(exc).__name__}: {exc}")
-            rows.append({
-                'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
-                'passed_minimum_checks':False, 'latency_ms':round(latency_ms,1),
-                'llm_calls':'', 'tool_calls':'', 'failures':f"ERROR: {type(exc).__name__}: {exc}"
-            })
+    with vendor_api(Settings.from_env().vendor_risk_base_url) as api_state:
+        print(f"Vendor-risk API: {api_state}\n")
+        for case in cases:
+            start = time.perf_counter()
+            try:
+                raw = handle_request(case['request_id'], architecture=args.architecture)
+                decision = raw if isinstance(raw, ProcurementDecision) else ProcurementDecision.model_validate(raw)
+                latency_ms = (time.perf_counter() - start) * 1000
+                failures = evaluate(decision, case['expectations'])
+                passed = not failures
+                tel = decision.telemetry
+                print(f"{'PASS' if passed else 'FAIL'}  {case['case_id']}  {case['title']}  ({latency_ms:.0f} ms)")
+                for f in failures:
+                    print(f"      - {f}")
+                rows.append({
+                    'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
+                    'passed_minimum_checks':passed, 'latency_ms':round(latency_ms,1),
+                    'llm_calls': tel.llm_calls if tel else '', 'tool_calls': tel.tool_calls if tel else '',
+                    'failures':' | '.join(failures)
+                })
+            except NotImplementedError as exc:
+                print(f"STOP  {exc}")
+                return
+            except Exception as exc:
+                latency_ms = (time.perf_counter() - start) * 1000
+                print(f"ERROR {case['case_id']}  {type(exc).__name__}: {exc}")
+                rows.append({
+                    'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
+                    'passed_minimum_checks':False, 'latency_ms':round(latency_ms,1),
+                    'llm_calls':'', 'tool_calls':'', 'failures':f"ERROR: {type(exc).__name__}: {exc}"
+                })
 
     if rows:
         out = ROOT/'evals'/f"results_{args.architecture}.csv"

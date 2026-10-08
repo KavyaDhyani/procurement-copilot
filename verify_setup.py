@@ -134,15 +134,39 @@ def check_mock_api() -> None:
     ok("Mock vendor-risk API checks passed")
 
 
+def check_tools_and_policy() -> None:
+    from src.data_access import load_reference_date
+    from src.tools import TOOLS
+
+    deterministic = [name for name, spec in TOOLS.items() if spec.deterministic]
+    if len(TOOLS) < 3 or not deterministic:
+        fail("The copilot must expose at least 3 tools, at least 1 of them deterministic")
+    ok(f"{len(TOOLS)} tools registered ({len(deterministic)} deterministic); policy reference date {load_reference_date()}")
+
+
+def check_model_config() -> None:
+    """A missing key is a warning, not a failure: the copilot then runs its deterministic checks only."""
+    from src.llm import LLMError, LLMSettings
+
+    try:
+        settings = LLMSettings.from_env()
+    except LLMError as exc:
+        print(f"[WARN] No model configured - recommendations will be deterministic-only. {exc}")
+    else:
+        ok(f"Model provider configured: {settings.provider} / {settings.model}")
+
+
 def main() -> None:
-    print("FDE Assessment 3 - starter pack pre-flight\n")
+    print("Procurement Request Copilot - pre-flight\n")
     check_python()
     check_imports()
     check_data()
     check_contract_and_evals()
     check_mock_api()
+    check_tools_and_policy()
+    check_model_config()
     print("\nPRE-FLIGHT PASSED")
-    print("Next: copy .env.example to .env, add your model credentials, then run: python run_local.py")
+    print("Next: python run_local.py   (starts the mock vendor-risk API and the UI)")
 
 
 if __name__ == "__main__":
