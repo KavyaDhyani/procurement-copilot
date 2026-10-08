@@ -149,7 +149,9 @@ def finalize(ctx: RunContext, draft: ModelDraft | None, architecture: str, usage
 
         # ---- Overlap: the model's judgement counts only if it names products the catalog tool returned
         known = _catalog_products(ctx)
-        existing_products = [known[name_key(p)] for p in draft.overlap_products if name_key(p) in known]
+        # models often append the catalog id, e.g. "NeuralDesk Business (SW009)"; that is still the catalog product
+        named = [name_key(re.sub(r"\s*\([^)]*\)\s*$", "", p)) for p in draft.overlap_products]
+        existing_products = list(dict.fromkeys(known[n] for n in named if n in known))
         if draft.overlap_level in _OVERLAP_FLAG_LEVELS:
             if not existing_products:
                 events.append(GuardrailEvent(kind="ungrounded_overlap", detail=f"overlap '{draft.overlap_level}' named no product "

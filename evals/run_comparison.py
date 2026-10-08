@@ -3,6 +3,7 @@
     python evals/run_comparison.py                       # all 18 cases, both architectures
     python evals/run_comparison.py --cases DS-06,FX-04   # a subset
     python evals/run_comparison.py --resume              # continue an interrupted run (e.g. after a quota limit)
+    python evals/run_comparison.py --replay              # re-score the recorded model outputs through the current code (no model, no key)
     python evals/run_comparison.py --report-only         # rebuild summary.md / results.csv from saved runs, no model calls
 
 Writes, under evals/results/<model>/:
@@ -93,10 +94,42 @@ def score(result: AnalysisResult, expected: dict) -> dict:
     }
 
 
-def run_one(case: dict, raw: dict, architecture: str, settings: Settings, trial: int, public: dict) -> dict:
+class RecordedModel:
+    """Plays back the model outputs saved from a live run, in order, so a run can be re-scored without a model.
+
+    Tools, the policy engine and the finalizer run for real; only the model's words are replayed. That makes the
+    published numbers reproducible without an API key, and shows what a code change does to past model outputs.
+    """
+
+    def __init__(self, live_row: dict) -> None:
+        self.model = live_row["model"]
+        self._outputs = [stage["output"] for stage in live_row["result"]["stages"]]
+        self._usage = live_row["result"]["usage"]
+
+    def complete_json(self, system, user, schema_name, schema, usage):
+        if not self._outputs:      # the live run ended here because the model's output stayed unusable
+            raise LLMError("recorded run has no further model output", invalid_output=True)
+        return self._outputs.pop(0)
+
+    def restore_measurements(self, result: AnalysisResult) -> None:
+        """Latency, calls and tokens are facts about the live run; carry them over unchanged."""
+        for field in ("llm_calls", "llm_retries", "prompt_tokens", "completion_tokens", "llm_ms", "rate_limit_wait_ms"):
+            setattr(result.usage, field, self._usage[field] if field in self._usage else getattr(result.usage, field))
+        result.usage.tool_ms = self._usage["tool_ms"]
+        result.decision.telemetry.llm_calls = result.usage.llm_calls
+
+
+def run_one(case: dict, raw: dict, architecture: str, settings: Settings, trial: int, public: dict,
+            live_row: dict | None = None) -> dict:
     started = time.perf_counter()
-    result = analyze_request(raw, architecture, settings)
-    wall_ms = (time.perf_counter() - started) * 1000
+    if live_row is None:
+        result = analyze_request(raw, architecture, settings)
+        wall_ms = (time.perf_counter() - started) * 1000
+    else:
+        recorded = RecordedModel(live_row)
+        result = analyze_request(raw, architecture, settings, llm=recorded)
+        recorded.restore_measurements(result)
+        wall_ms = live_row["wall_ms"]
     u, d = result.usage, result.decision
     row = {
         "case_id": case["case_id"], "architecture": architecture, "trial": trial, "request_id": case["request_id"],
@@ -131,7 +164,7 @@ def _avg(rows: list[dict], key: str) -> float:
     return sum(r[key] for r in rows) / len(rows) if rows else 0.0
 
 
-def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str) -> None:
+def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str, replay_changes: list[str] | None = None) -> None:
     with (out_dir / "results.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
         writer.writeheader()
@@ -191,6 +224,12 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
     lines += ["", "## Everything the scorer or the guardrails flagged", ""]
     lines += [f"- **{r['case_id']} / {r['architecture']}** ({'FAIL' if not r['passed'] else 'pass'}): {r['notes']}" for r in
               sorted(problems, key=lambda r: (r["case_id"], r["architecture"]))] or ["- nothing"]
+    if replay_changes is not None:
+        lines += ["", "## Provenance", "",
+                  "These numbers come from the model outputs recorded in the live run (`runs_live.jsonl`), re-run through the "
+                  "current tools, policy engine and finalizer with `--replay`. Latency, call counts and tokens are the live "
+                  "measurements. Outcomes that differ from what the live run produced at the time:", ""]
+        lines += [f"- {c}" for c in replay_changes] or ["- none"]
     (out_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -203,16 +242,19 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--resume", action="store_true", help="keep existing runs in the output folder and only run what is missing")
     parser.add_argument("--report-only", action="store_true", help="rebuild the reports from runs.jsonl without calling the model")
+    parser.add_argument("--replay", action="store_true",
+                        help="re-run the recorded model outputs (runs_live.jsonl) through the current tools, policy engine and finalizer")
     parser.add_argument("--out", default=None, help="output folder (default: evals/results/<model>)")
     args = parser.parse_args()
 
     try:
-        model = LLMSettings.from_env().model
+        model = os.getenv("MODEL_NAME") if (args.replay or args.report_only) and os.getenv("MODEL_NAME") else LLMSettings.from_env().model
     except LLMError as exc:
-        sys.exit(f"Cannot evaluate without a model: {exc}")
+        sys.exit(f"Cannot evaluate without a model: {exc}  (For --replay / --report-only, MODEL_NAME=<model> is enough.)")
     out_dir = Path(args.out) if args.out else ROOT / "evals" / "results" / re.sub(r"[^a-zA-Z0-9.-]+", "_", model)
     out_dir.mkdir(parents=True, exist_ok=True)
     runs_path = out_dir / "runs.jsonl"
+    live_path = out_dir / "runs_live.jsonl"      # the untouched record of what the model returned, kept once a replay exists
 
     all_cases = json.loads((ROOT / "evals" / "cases.json").read_text(encoding="utf-8"))
     wanted = None if args.cases == "all" else set(args.cases.split(","))
@@ -242,6 +284,30 @@ def main() -> None:
                      {r["request_id"]: r for r in json.loads((FIXTURE_DIR / "requests.json").read_text(encoding="utf-8"))}),
     }
     print(f"Model: {model}\nCases: {len(cases)}  architectures: {architectures}  trials: {args.trials}  -> {out_dir.relative_to(ROOT)}\n")
+
+    if args.replay:
+        source = live_path if live_path.is_file() else runs_path
+        live_rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if not live_path.is_file():
+            live_path.write_text(runs_path.read_text(encoding="utf-8"), encoding="utf-8")
+        case_by_id = {c["case_id"]: c for c in all_cases}
+        replayed, changed = [], []
+        with vendor_api(base.vendor_risk_base_url), vendor_api(FIXTURE_API, FIXTURE_DIR / "vendor_risk.json"):
+            for live in live_rows:
+                case = case_by_id[live["case_id"]]
+                settings, requests_by_id = datasets[case["dataset"]]
+                row = run_one(case, requests_by_id[case["request_id"]], live["architecture"], settings, live["trial"], public, live_row=live)
+                replayed.append(row)
+                if (row["passed"], row["action"]) != (live["passed"], live["action"]):
+                    changed.append(f"{row['case_id']} [{row['architecture']}]: live {live['action']} "
+                                   f"{'PASS' if live['passed'] else 'FAIL'} -> now {row['action']} {'PASS' if row['passed'] else 'FAIL'}")
+        runs_path.write_text("".join(json.dumps(r) + "\n" for r in replayed), encoding="utf-8")
+        write_reports(out_dir, replayed, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in replayed)], model, changed)
+        print(f"Replayed {len(replayed)} recorded runs through the current code -> {out_dir.relative_to(ROOT)}/")
+        print("Outcomes that differ from the live run:" if changed else "Every outcome matches the live run.")
+        for line in changed:
+            print("  " + line)
+        return
 
     stopped = None
     with vendor_api(base.vendor_risk_base_url) as a, vendor_api(FIXTURE_API, FIXTURE_DIR / "vendor_risk.json") as b:

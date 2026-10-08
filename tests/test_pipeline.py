@@ -215,3 +215,13 @@ def test_persistently_invalid_model_output_is_reported_as_such(settings, scripte
     assert result.degraded and result.model_output_invalid
     outage = analyze_request(req, "single", settings, scripted_llm({"evidence_plan": LLMError("daily quota")}))
     assert outage.degraded and not outage.model_output_invalid
+
+
+def test_overlap_product_named_with_its_catalog_id_is_still_grounded(settings, scripted_llm):
+    """Seen in evaluation: the model wrote 'TaskFlow (SW003)'; that is the catalog product, not an invention."""
+    req = data_access.get_request("REQ-1008")
+    overlap = {"assessment": "likely_duplicate", "existing_products": ["TaskFlow (SW003)"], "reason": "Already licensed."}
+    result = analyze_request(req, "single", settings,
+                             scripted_llm(script(req, "single", "review_existing_tool_first", overlap=overlap)))
+    assert "ungrounded_overlap" not in {e.kind for e in result.guardrail_events}
+    assert "TaskFlow" in result.decision.next_step
