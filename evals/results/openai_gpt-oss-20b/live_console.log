@@ -1,0 +1,57 @@
+Model: openai/gpt-oss-20b
+Cases: 18  architectures: ['single', 'staged']  trials: 1  -> evals/results/openai_gpt-oss-20b
+
+Vendor-risk API (data): already running; (fixtures): started for this run
+
+FAIL  DS-01 [single] review_existing_tool_first     1937 ms  2 llm  5 tools   3357 tok
+      action review_existing_tool_first, expected ['proceed_to_standard_approval']
+PASS  DS-01 [staged] proceed_to_standard_approval   2589 ms  3 llm  5 tools   5014 tok  (waited 6s for quota)
+PASS  DS-02 [single] route_for_reviews              1989 ms  2 llm  5 tools   3613 tok  (waited 22s for quota)
+PASS  DS-02 [staged] route_for_reviews              3356 ms  3 llm  5 tools   5376 tok  (waited 33s for quota)
+PASS  DS-03 [single] route_for_reviews              1797 ms  2 llm  5 tools   3359 tok  (waited 20s for quota)
+PASS  DS-03 [staged] route_for_reviews              6115 ms  3 llm  5 tools   5104 tok  (waited 51s for quota)
+PASS  DS-04 [single] route_for_reviews              2181 ms  2 llm  5 tools   3639 tok  (waited 25s for quota)
+PASS  DS-04 [staged] route_for_reviews              3233 ms  3 llm  5 tools   5453 tok  (waited 35s for quota)
+PASS  DS-05 [single] route_for_reviews              2164 ms  2 llm  5 tools   3384 tok  (waited 22s for quota)
+PASS  DS-05 [staged] route_for_reviews              4351 ms  3 llm  5 tools   4976 tok  (waited 31s for quota)
+PASS  DS-06 [single] request_clarification          2623 ms  2 llm  5 tools   3560 tok  (waited 21s for quota)
+STOP  DS-06 [staged] model unavailable: Model request rejected (HTTP 400): Generated JSON does not match the expected schema. Please adjust your prompt. See 'failed_generation' for more details. Error: jsonschema: '' does not validate with /required: missing properties: 'overlap'
+
+Wrote evals/results/openai_gpt-oss-20b/summary.md, results.csv, runs.jsonl
+Stopped early because the model became unavailable (likely a quota limit). Re-run with --resume to finish; completed runs are kept.
+Model: openai/gpt-oss-20b
+Cases: 18  architectures: ['single', 'staged']  trials: 1  -> evals/results/openai_gpt-oss-20b
+
+Vendor-risk API (data): already running; (fixtures): started for this run
+
+FAIL  DS-06 [staged] request_clarification          2744 ms  3 llm  5 tools   5207 tok
+      ungrounded_overlap: overlap 'alternative_no_gap' named no product returned by the catalog tool: ['NeuralDesk Business (SW009)']
+PASS  DS-07 [single] manual_review                  3412 ms  3 llm  6 tools   6477 tok  (waited 27s for quota)
+PASS  DS-07 [staged] manual_review                  3182 ms  3 llm  5 tools   5560 tok  (waited 25s for quota)
+FAIL  DS-08 [single] proceed_to_standard_approval   1689 ms  2 llm  5 tools   3348 tok  (waited 21s for quota)
+      action proceed_to_standard_approval, expected ['review_existing_tool_first']; flags missing ['existing_tool_overlap']; escalation: waved through
+PASS  DS-08 [staged] review_existing_tool_first     5693 ms  4 llm  6 tools   7120 tok  (waited 56s for quota)
+PASS  DS-09 [single] manual_review                  2711 ms  2 llm  5 tools   3423 tok  (waited 21s for quota)
+PASS  DS-09 [staged] manual_review                  2556 ms  3 llm  5 tools   4897 tok  (waited 24s for quota)
+PASS  DS-10 [single] proceed_to_standard_approval   2574 ms  2 llm  5 tools   3231 tok  (waited 15s for quota)
+PASS  DS-10 [staged] proceed_to_standard_approval   3927 ms  3 llm  5 tools   5120 tok  (waited 42s for quota)
+PASS  FX-01 [single] route_for_reviews              1599 ms  2 llm  5 tools   3214 tok  (waited 18s for quota)
+PASS  FX-01 [staged] route_for_reviews              3296 ms  3 llm  5 tools   4738 tok  (waited 23s for quota)
+PASS  FX-02 [single] review_existing_tool_first     2664 ms  2 llm  5 tools   3228 tok  (waited 19s for quota)
+FAIL  FX-02 [staged] route_for_reviews              5355 ms  3 llm  5 tools   5144 tok  (waited 47s for quota)
+      action route_for_reviews, expected ['review_existing_tool_first']
+PASS  FX-03 [single] route_for_reviews              1927 ms  2 llm  5 tools   3506 tok  (waited 23s for quota)
+FAIL  FX-03 [staged] review_existing_tool_first     2917 ms  3 llm  5 tools   5279 tok  (waited 34s for quota)
+      action review_existing_tool_first, expected ['route_for_reviews']
+PASS  FX-04 [single] route_for_reviews              1800 ms  2 llm  5 tools   3395 tok  (waited 23s for quota)
+PASS  FX-04 [staged] route_for_reviews              2661 ms  3 llm  5 tools   5359 tok  (waited 34s for quota)
+PASS  FX-05 [single] proceed_to_standard_approval   1980 ms  2 llm  5 tools   3023 tok  (waited 15s for quota)
+PASS  FX-05 [staged] proceed_to_standard_approval   2512 ms  3 llm  5 tools   4452 tok  (waited 19s for quota)
+PASS  FX-06 [single] route_for_reviews              2896 ms  2 llm  5 tools   3146 tok  (waited 21s for quota)
+PASS  FX-06 [staged] route_for_reviews              1917 ms  3 llm  5 tools   4735 tok  (waited 28s for quota)
+PASS  FX-07 [single] manual_review                  4361 ms  2 llm  5 tools   3103 tok  (waited 16s for quota)
+PASS  FX-07 [staged] manual_review                  4795 ms  3 llm  5 tools   4644 tok  (waited 27s for quota)
+PASS  FX-08 [single] request_clarification          2102 ms  2 llm  5 tools   3343 tok  (waited 10s for quota)
+PASS  FX-08 [staged] request_clarification          4910 ms  3 llm  5 tools   5143 tok  (waited 37s for quota)
+
+Wrote evals/results/openai_gpt-oss-20b/summary.md, results.csv, runs.jsonl

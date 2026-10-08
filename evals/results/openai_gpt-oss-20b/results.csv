@@ -1,0 +1,37 @@
+case_id,architecture,trial,correct_next_action,grounded_evidence,policy_followed,human_escalation_correct,passed,latency_ms,llm_calls,tool_calls,notes,action,model_proposed_action,model_action_correct,tokens,rate_limit_wait_ms,wall_ms,llm_retries,harness_backfilled_tools,model_findings_kept,public_minimum_checks,degraded,model_output_invalid,model
+DS-01,single,1,False,True,True,True,False,1937,2,5,"action review_existing_tool_first, expected ['proceed_to_standard_approval']",review_existing_tool_first,review_existing_tool_first,False,3357,0,1938,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-01,staged,1,True,True,True,True,True,2589,3,5,,proceed_to_standard_approval,request_clarification,False,5014,6123,8714,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-02,single,1,True,True,True,True,True,1989,2,5,,route_for_reviews,route_for_reviews,True,3613,22395,24387,0,0,4,True,False,False,openai/gpt-oss-20b
+DS-02,staged,1,True,True,True,True,True,3356,3,5,,route_for_reviews,route_for_reviews,True,5376,32740,36099,0,0,4,True,False,False,openai/gpt-oss-20b
+DS-03,single,1,True,True,True,True,True,1797,2,5,,route_for_reviews,route_for_reviews,True,3359,20383,22181,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-03,staged,1,True,True,True,True,True,6115,3,5,,route_for_reviews,route_for_reviews,True,5104,50808,56926,2,0,4,True,False,False,openai/gpt-oss-20b
+DS-04,single,1,True,True,True,True,True,2181,2,5,,route_for_reviews,route_for_reviews,True,3639,24988,27170,0,0,3,,False,False,openai/gpt-oss-20b
+DS-04,staged,1,True,True,True,True,True,3233,3,5,,route_for_reviews,route_for_reviews,True,5453,35033,38268,0,0,4,,False,False,openai/gpt-oss-20b
+DS-05,single,1,True,True,True,True,True,2164,2,5,,route_for_reviews,route_for_reviews,True,3384,21777,23943,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-05,staged,1,True,True,True,True,True,4351,3,5,,route_for_reviews,route_for_reviews,True,4976,30869,35222,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-06,single,1,True,True,True,True,True,2623,2,5,,request_clarification,request_clarification,True,3560,21377,24002,0,0,4,True,False,False,openai/gpt-oss-20b
+DS-06,staged,1,True,True,True,True,True,2744,3,5,,request_clarification,request_clarification,True,5207,0,2745,0,0,4,True,False,False,openai/gpt-oss-20b
+DS-07,single,1,True,True,True,True,True,3412,3,6,,manual_review,route_for_reviews,False,6477,27275,30688,0,0,3,,False,False,openai/gpt-oss-20b
+DS-07,staged,1,True,True,True,True,True,3182,3,5,,manual_review,manual_review,True,5560,25390,28574,0,0,4,,False,False,openai/gpt-oss-20b
+DS-08,single,1,False,True,False,False,False,1689,2,5,"action proceed_to_standard_approval, expected ['review_existing_tool_first']; flags missing ['existing_tool_overlap']; escalation: waved through",proceed_to_standard_approval,request_clarification,False,3348,21289,22981,0,0,2,,False,False,openai/gpt-oss-20b
+DS-08,staged,1,True,True,True,True,True,5693,4,6,,review_existing_tool_first,review_existing_tool_first,True,7120,56050,61746,1,0,4,,False,False,openai/gpt-oss-20b
+DS-09,single,1,True,True,True,True,True,2711,2,5,,manual_review,manual_review,True,3423,21079,23791,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-09,staged,1,True,True,True,True,True,2556,3,5,,manual_review,manual_review,True,4897,23505,26063,0,0,3,True,False,False,openai/gpt-oss-20b
+DS-10,single,1,True,True,True,True,True,2574,2,5,,proceed_to_standard_approval,proceed_to_standard_approval,True,3231,14844,17419,0,0,3,,False,False,openai/gpt-oss-20b
+DS-10,staged,1,True,True,True,True,True,3927,3,5,,proceed_to_standard_approval,request_clarification,False,5120,42188,46117,1,0,3,,False,False,openai/gpt-oss-20b
+FX-01,single,1,True,True,True,True,True,1599,2,5,,route_for_reviews,route_for_reviews,True,3214,17867,19468,0,0,3,,False,False,openai/gpt-oss-20b
+FX-01,staged,1,True,True,True,True,True,3296,3,5,,route_for_reviews,route_for_reviews,True,4738,22753,26051,0,0,3,,False,False,openai/gpt-oss-20b
+FX-02,single,1,True,True,True,True,True,2664,2,5,,review_existing_tool_first,review_existing_tool_first,True,3228,19286,21951,0,0,4,,False,False,openai/gpt-oss-20b
+FX-02,staged,1,False,True,True,True,False,5355,3,5,"action route_for_reviews, expected ['review_existing_tool_first']",route_for_reviews,route_for_reviews,False,5144,46937,52295,2,0,4,,False,False,openai/gpt-oss-20b
+FX-03,single,1,True,True,True,True,True,1927,2,5,,route_for_reviews,route_for_reviews,True,3506,22876,24804,0,0,3,,False,False,openai/gpt-oss-20b
+FX-03,staged,1,False,True,True,True,False,2917,3,5,"action review_existing_tool_first, expected ['route_for_reviews']",review_existing_tool_first,request_clarification,False,5279,34239,37158,0,0,4,,False,False,openai/gpt-oss-20b
+FX-04,single,1,True,True,True,True,True,1800,2,5,,route_for_reviews,route_for_reviews,True,3395,22672,24473,0,0,3,,False,False,openai/gpt-oss-20b
+FX-04,staged,1,True,True,True,True,True,2661,3,5,,route_for_reviews,route_for_reviews,True,5359,33967,36629,0,0,4,,False,False,openai/gpt-oss-20b
+FX-05,single,1,True,True,True,True,True,1980,2,5,,proceed_to_standard_approval,proceed_to_standard_approval,True,3023,14795,16777,0,0,3,,False,False,openai/gpt-oss-20b
+FX-05,staged,1,True,True,True,True,True,2512,3,5,,proceed_to_standard_approval,proceed_to_standard_approval,True,4452,19224,21738,0,0,3,,False,False,openai/gpt-oss-20b
+FX-06,single,1,True,True,True,True,True,2896,2,5,,route_for_reviews,route_for_reviews,True,3146,20882,23779,0,0,3,,False,False,openai/gpt-oss-20b
+FX-06,staged,1,True,True,True,True,True,1917,3,5,,route_for_reviews,route_for_reviews,True,4735,27504,29422,0,0,3,,False,False,openai/gpt-oss-20b
+FX-07,single,1,True,True,True,True,True,4361,2,5,,manual_review,manual_review,True,3103,16039,20401,0,0,3,,False,False,openai/gpt-oss-20b
+FX-07,staged,1,True,True,True,True,True,4795,3,5,,manual_review,route_for_reviews,False,4644,26734,31534,0,0,3,,False,False,openai/gpt-oss-20b
+FX-08,single,1,True,True,True,True,True,2102,2,5,,request_clarification,request_clarification,True,3343,9688,11791,0,0,3,,False,False,openai/gpt-oss-20b
+FX-08,staged,1,True,True,True,True,True,4910,3,5,,request_clarification,request_clarification,True,5143,37368,42281,1,0,4,,False,False,openai/gpt-oss-20b

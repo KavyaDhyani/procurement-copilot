@@ -117,12 +117,14 @@ Details, responsibilities and escalation conditions: [`docs/workflow_and_archite
 ## Evaluation
 
 ```bash
-python -m pytest tests -q                                # 126 tests, no model required
+python -m pytest tests -q                                # 133 tests, no model required
 python evals/run_public_evals.py --architecture single   # the starter's six public cases
 python evals/run_public_evals.py --architecture staged
-python evals/run_comparison.py                           # A vs B on the same 18 cases
-python evals/run_comparison.py --report-only             # rebuild reports from saved runs
+MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay   # reproduce the 20b table offline, no key needed
+python evals/run_comparison.py --out evals/results/my-run               # a new live A-vs-B run on the same 18 cases
 ```
+
+`--replay` feeds the recorded model outputs back through the real tools, policy engine and finalizer, so the published 20b numbers can be reproduced without a model key. A live run needs a key and about 160,000 tokens; on Groq's free tier that is roughly 25 minutes and most of one model's daily quota.
 
 `run_comparison.py` runs both architectures back to back on the same 18 cases: the 10 requests in `data/requests.json` (which include the six public cases) and 8 fixture cases on a separate data snapshot (`evals/fixtures/data/`) that stand in for hidden cases - injection inside vendor notes, a vendor unknown to both sources, sensitive data described only in free text, a false pre-approval claim, exact threshold boundaries, a one-day-expired review, and an API timeout.
 
@@ -137,7 +139,62 @@ Scoring is deterministic, with no LLM judge. A case passes when all four hold:
 
 It also records the model's proposed action **before** the code guardrail, the processing latency (model plus tool time, with free-tier quota waits reported separately), model calls, tool calls and tokens.
 
-<!-- RESULTS -->
+## Evaluation results
+
+Both architectures, the same 18 cases, one trial per case, on two Groq-hosted models. Full reports: [`evals/results/openai_gpt-oss-120b/summary.md`](evals/results/openai_gpt-oss-120b/summary.md) and [`evals/results/openai_gpt-oss-20b/summary.md`](evals/results/openai_gpt-oss-20b/summary.md).
+
+| Metric | A single, 120b | B staged, 120b | A single, 20b | B staged, 20b |
+|---|---:|---:|---:|---:|
+| **Cases passing all four criteria** | **16/18** | **16/18** | **16/18** | **16/18** |
+| Correct next action | 17/18 | 16/18 | 16/18 | 16/18 |
+| Evidence grounded | 18/18 | 18/18 | 18/18 | 18/18 |
+| Policy + deterministic rules followed | 16/18 | 17/18 | 17/18 | 18/18 |
+| Human escalation correct | 18/18 | 17/18 | 17/18 | 18/18 |
+| Model's own proposal correct, before guardrails | not recorded | not recorded | 15/18 | 13/18 |
+| Avg processing latency (model + tools) | 3.5 s | 5.0 s | 2.4 s | 3.7 s |
+| Avg LLM calls | 2.00 | 3.06 | 2.06 | 3.06 |
+| Avg tool calls | 5.00 | 5.06 | 5.06 | 5.06 |
+| Avg tokens per request | 3,547 | 5,450 | 3,519 | 5,184 |
+| Avg wait for free-tier quota (not in latency) | 18 s | 26 s | 19 s | 31 s |
+| Model calls retried | not recorded | not recorded | 0 | 7 |
+
+The six public cases met the starter's minimum checks on both architectures (6/6 each on 20b; on 120b all six passed the stricter four-criteria scoring). With the model switched off (`LLM_PROVIDER=none`), the deterministic layer alone also passes all six minimum checks.
+
+**What failed.** Eight of 72 runs, and every one is in the single judgement left to the model: whether an existing tool already covers the need.
+
+| Run | What happened |
+|---|---|
+| A, 120b, DS-08 | Right action (review existing tool) but the overlap flag was missing. Fixed afterwards: that action now always carries the flag |
+| A, 120b, DS-10 | Asked to review the existing tool for a low-value training pack; should have proceeded |
+| B, 120b, DS-08 | Sent a duplicate of a company-wide tool to standard approval |
+| B, 120b, FX-02 | Routed for reviews; should have checked the existing BI tool first because no gap was stated |
+| A, 20b, DS-01 | Asked to review the existing tool for a three-seat add-on; should have proceeded |
+| A, 20b, DS-08 | Proposed clarification, which policy did not allow; the override fell back to standard approval |
+| B, 20b, FX-02 | Same as on 120b |
+| B, 20b, FX-03 | Security and Privacy were added correctly, but the final action was to check the existing tool instead of routing for reviews |
+
+No run got an approval list, threshold, review expiry, source conflict, outage or injection case wrong. Those are decided in code that both architectures share.
+
+**What the grounding checks found.** On 20b, 120 model-written findings were kept and none were discarded. That is a good result, with the caveat that the check covers figures, dates, product names and evidence ids rather than every word.
+
+**How these numbers were produced.**
+
+- 20b: the complete record is in `runs_live.jsonl`. The table is that record replayed through the final code (`--replay`); one outcome differs from the live run, because a product named "NeuralDesk Business (SW009)" was at first rejected as not in the catalog.
+- 120b: the detailed per-run record was lost to a bug in the first version of the replay mode, so the table was rebuilt from the run's console output (`live_console.log`), which has every run's outcome, action, latency, calls, tokens and failure notes. Counters the console does not print are marked "not recorded". The runner now refuses to discard recorded runs and has tests for that.
+- One prompt change was made after early 120b runs showed both architectures reading "internal documents" as confidential; both full runs use the final prompts. The 20b run was interrupted once and resumed after a retry fix.
+
+## Comparison and ship decision
+
+**Ship Architecture A, the single agent.** The memo is [`docs/architecture_decision.md`](docs/architecture_decision.md).
+
+- **Quality is indistinguishable.** 16/18 for both architectures on both models, and the failures are of the same kind. Each architecture waved one duplicate request through once.
+- **Cost is consistently different.** B makes one more model call and uses about 50% more tokens and 45-55% more processing time per request. On a tier limited to 8,000 tokens per minute that also means longer queueing.
+- **B was less stable on the smaller model**: 7 retried model calls against 0, and its own proposal needed correcting by the code guardrail more often (4 runs against 2).
+- **B's structural advantage did not show up.** Its reviewer sees no requester free text or vendor notes, but all three injection cases came out right in both architectures, because approvals are outside the model's control in both.
+
+Reliability here comes from the shared parts: the policy engine, mandatory evidence checks, grounding checks and the human decision. A second agent can only re-judge the action, and on this evidence it does that no better while costing half as much again.
+
+**Model choice.** Keep `openai/gpt-oss-120b` as the default. Pass rates were the same, and 20b was about a second faster per request, but with the single agent 20b sent one duplicate request to standard approval while 120b's two failures were a missing flag and one over-cautious check. At 18 cases and one trial this is a weak signal, not proof.
 
 ## Assumptions
 
@@ -166,6 +223,8 @@ The full list is in [`docs/workflow_and_architecture.md`](docs/workflow_and_arch
 ## Known limitations
 
 - **Small evaluation set, one trial per case.** 18 cases cannot establish a statistically meaningful difference between architectures, and model output varies between runs. `--trials N` exists; the free-tier daily quota allowed one full pass per model.
+- **The 120b detailed record is missing.** Its table was rebuilt from console output, so those runs cannot be replayed or inspected finding by finding. `python evals/run_comparison.py --overwrite` regenerates it.
+- **Overlap judgement is the weak point.** All eight failures are there, in both architectures. Ambiguous overlap can currently fall through to standard approval; a safer default would send it to a human check.
 - **Expected outcomes were written by the same person as the policy engine.** They agree by construction on the deterministic parts; an independent labeller could disagree with my reading of the policy.
 - **Prompts were tuned on the public requests.** One prompt change was made after early runs (see commit history). The fixture cases were written before any model run on them, but they are not a blind hold-out.
 - **Grounding checks cover figures, dates, product names and evidence ids**, not every word. A finding can still mis-state a non-numeric fact and pass.

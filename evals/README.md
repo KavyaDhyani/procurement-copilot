@@ -14,21 +14,31 @@ Runs the six public cases in `public_cases.json`, validates the output schema, a
 ## 2. A-vs-B comparison
 
 ```bash
-python evals/run_comparison.py                        # all 18 cases, both architectures
-python evals/run_comparison.py --cases DS-06,FX-04    # a subset
-python evals/run_comparison.py --trials 3             # repeat each case
+MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay   # reproduce the committed 20b table; no key, no quota
+
+python evals/run_comparison.py --out evals/results/my-run   # new live run: all 18 cases, both architectures
+python evals/run_comparison.py --cases DS-06,FX-04 --out evals/results/scratch
+python evals/run_comparison.py --trials 3 --out evals/results/three-trials
 python evals/run_comparison.py --resume               # continue after a quota stop
+python evals/run_comparison.py --overwrite            # discard the recorded runs for this model and start again
 python evals/run_comparison.py --report-only          # rebuild reports from saved runs (no model calls)
-MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py
 ```
+
+Recorded runs cost model quota to recreate, so a live run refuses to write over them unless you pass `--resume`, `--overwrite` or a different `--out`.
+
+`--replay` takes the model outputs recorded in a live run and feeds them back through the real tools, policy engine and finalizer. It needs no model, so anyone can reproduce the published numbers, and it shows what a code change does to past model behaviour. The first replay preserves the live record as `runs_live.jsonl`; the summary lists every outcome that differs from it.
 
 Output goes to `evals/results/<model>/`:
 
 | File | Contents |
 |---|---|
-| `summary.md` | comparison table, per-case outcomes, every failure and guardrail event |
+| `summary.md` | comparison table, per-case outcomes, every failure and guardrail event, provenance |
 | `results.csv` | one row per run, in the starter template's columns plus cost and trace counters |
-| `runs.jsonl` | the full decision, ledger, agent stages and guardrail events for every run |
+| `runs.jsonl` | the full decision, ledger, agent stages and guardrail events for every run, as scored by the current code |
+| `runs_live.jsonl` | the same, exactly as the live run produced it; the source for `--replay` |
+| `live_console.log` | what the live run printed |
+
+**Committed results.** `openai_gpt-oss-20b/` has all of the above. `openai_gpt-oss-120b/` has only `summary.md`, `results.csv` and `live_console.log`: its detailed record was lost during development, and `reconstruct_from_console.py` rebuilt the report from the console log, marking the counters the console does not print as "not recorded".
 
 ### Cases (`cases.json`)
 
