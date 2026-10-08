@@ -21,6 +21,16 @@ def _load() -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@app.get("/")
+def root() -> dict:
+    """Someone opened the API's address in a browser: say what this is and where the product lives."""
+    return {
+        "service": "Mock vendor-risk API (a tool used by the Procurement Request Copilot; not a web page)",
+        "copilot_ui": "http://127.0.0.1:8501",
+        "endpoints": ["/health", "/vendor-risk/{vendor_name}"],
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}

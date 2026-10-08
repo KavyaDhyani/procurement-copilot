@@ -8,6 +8,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
+if __name__ == "__main__":
+    from project_env import use_project_virtualenv
+
+    use_project_virtualenv(__file__)
+
 REQUIRED_MODULES = [
     "fastapi",
     "uvicorn",

@@ -177,3 +177,28 @@ def test_provider_is_selected_from_whichever_key_is_set(monkeypatch):
     monkeypatch.setenv("MODEL_NAME", "some-model")
     chosen = LLMSettings.from_env()
     assert (chosen.provider, chosen.api_key, chosen.model) == ("gemini", "g-key", "some-model")
+
+
+# --- launcher plumbing -----------------------------------------------------------------------
+
+def test_scripts_switch_to_the_project_virtualenv_only_when_needed(monkeypatch, tmp_path):
+    import project_env
+
+    venv_python = project_env.ROOT / ".venv" / ("Scripts/python.exe" if project_env.os.name == "nt" else "bin/python")
+    if not venv_python.is_file():
+        assert project_env.project_python() is None                      # nothing to switch to
+        return
+    monkeypatch.delenv("COPILOT_NO_VENV_SWITCH", raising=False)
+    assert project_env.project_python(prefix=str(tmp_path)) == venv_python       # started from some other Python
+    assert project_env.project_python(prefix=str(project_env.ROOT / ".venv")) is None   # already inside .venv
+    monkeypatch.setenv("COPILOT_NO_VENV_SWITCH", "1")
+    assert project_env.project_python(prefix=str(tmp_path)) is None              # explicit opt-out
+
+
+def test_mock_api_root_points_to_the_ui():
+    from fastapi.testclient import TestClient
+
+    from mock_api.app import app
+
+    body = TestClient(app).get("/").json()
+    assert body["copilot_ui"] == "http://127.0.0.1:8501" and "/health" in body["endpoints"]

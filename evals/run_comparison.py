@@ -34,6 +34,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+if __name__ == "__main__":      # run under the project's .venv even when started from another Python
+    from project_env import use_project_virtualenv
+
+    use_project_virtualenv(__file__)
+
 from evals._support import vendor_api  # noqa: E402
 from evals.run_public_evals import evaluate as public_minimum_checks  # noqa: E402
 from src.config import Settings  # noqa: E402

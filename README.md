@@ -31,7 +31,9 @@ python verify_setup.py                    # expect PRE-FLIGHT PASSED
 python run_local.py                       # one command: mock vendor-risk API + UI
 ```
 
-Then open http://127.0.0.1:8501.
+Then open **http://127.0.0.1:8501**. The address is fixed: the launcher prints it when the UI is ready, and if port 8501 is taken it stops with an error instead of moving to another port. `http://127.0.0.1:8001` is the mock vendor-risk API, not a web page.
+
+`run_local.py`, `verify_setup.py` and the evaluation scripts re-run themselves under `.venv` if started from another Python (for example an active conda environment), so they work without activating it first. `pytest` does not: run it as `.venv/bin/python -m pytest tests -q` or with the environment activated.
 
 **Model key.** Any OpenAI-compatible endpoint works; no provider SDK is needed. Set one of these in `.env`:
 
@@ -119,7 +121,7 @@ Details, responsibilities and escalation conditions: [`docs/workflow_and_archite
 ## Evaluation
 
 ```bash
-python -m pytest tests -q                                # 135 tests, no model required
+python -m pytest tests -q                                # 137 tests, no model required
 python evals/run_public_evals.py --architecture single   # the starter's six public cases
 python evals/run_public_evals.py --architecture staged
 MODEL_NAME=gemini-3.5-flash-lite python evals/run_comparison.py --replay   # reproduce the Flash-Lite table offline, no key needed
@@ -221,6 +223,7 @@ The full list is in [`docs/workflow_and_architecture.md`](docs/workflow_and_arch
 | Public eval runner assumed the mock API was running; if not, every case looked like a model failure | the eval scripts check and start the API themselves |
 | `.gitignore` excluded eval results, which are a deliverable | curated results are committed under `evals/results/` |
 | Launcher hard-coded port 8001 and could block on Streamlit's first-run prompt | address derived from `VENDOR_RISK_BASE_URL`; headless start |
+| Launcher started only the API when Streamlit was missing from the active Python, with no UI and no error | scripts switch to `.venv`; the launcher fails clearly if the UI cannot start and prints the UI address when it is ready |
 | Data loaders coerced blanks to NaN and were easy to cache at import | per-call CSV reads with blanks kept as blanks |
 | "Go To Market" department has employees but no budget row | reported as `budget_unverified` and routed to Finance, not assumed available |
 
@@ -241,6 +244,7 @@ The full list is in [`docs/workflow_and_architecture.md`](docs/workflow_and_arch
 
 ```text
 app.py, run_local.py, verify_setup.py     UI, one-command launcher, pre-flight check
+project_env.py                            re-runs scripts under .venv when started from another Python
 src/                                      contracts, tools, policy engine, agents, finalizer, model client
 mock_api/                                 mock vendor-risk service
 data/                                     business data snapshot and the procurement policy
