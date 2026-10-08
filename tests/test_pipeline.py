@@ -196,3 +196,22 @@ def test_disallowed_proposal_with_grounded_duplicate_falls_back_to_checking_the_
     assert result.model_proposed_action == "request_clarification"
     assert result.action == "review_existing_tool_first"
     assert "action_overridden" in {e.kind for e in result.guardrail_events}
+
+
+def test_existing_tool_action_always_carries_the_overlap_flag(settings, scripted_llm):
+    """Seen in evaluation: the model chose 'review existing tool' but labelled the overlap as a mere expansion."""
+    req = data_access.get_request("REQ-1008")
+    expansion = {"assessment": "expansion_or_addon", "existing_products": ["TaskFlow"], "reason": "Pro tier of an owned product."}
+    result = analyze_request(req, "single", settings,
+                             scripted_llm(script(req, "single", "review_existing_tool_first", overlap=expansion)))
+    assert result.action == "review_existing_tool_first"
+    assert "existing_tool_overlap" in result.decision.risk_flags
+
+
+def test_persistently_invalid_model_output_is_reported_as_such(settings, scripted_llm):
+    req = data_access.get_request("REQ-1001")
+    result = analyze_request(req, "single", settings,
+                             scripted_llm({"evidence_plan": LLMError("schema mismatch after retries", invalid_output=True)}))
+    assert result.degraded and result.model_output_invalid
+    outage = analyze_request(req, "single", settings, scripted_llm({"evidence_plan": LLMError("daily quota")}))
+    assert outage.degraded and not outage.model_output_invalid

@@ -110,6 +110,9 @@ def run_one(case: dict, raw: dict, architecture: str, settings: Settings, trial:
         "model_findings_kept": sum(e.source == "agent_analysis" for e in d.evidence),
         "guardrail_events": [e.kind for e in result.guardrail_events],
     }
+    row["model_output_invalid"] = result.model_output_invalid
+    if result.degraded:
+        row["notes"] = "; ".join(filter(None, ["model output unusable - deterministic fallback used", row["notes"]]))
     row["passed"] = all(row[c] for c in CRITERIA) and not result.degraded
     if case["request_id"] in public:
         row["public_minimum_checks"] = not public_minimum_checks(d, public[case["request_id"]])
@@ -120,7 +123,8 @@ def run_one(case: dict, raw: dict, architecture: str, settings: Settings, trial:
 
 CSV_COLUMNS = ["case_id", "architecture", "trial", *CRITERIA, "passed", "latency_ms", "llm_calls", "tool_calls", "notes",
                "action", "model_proposed_action", "model_action_correct", "tokens", "rate_limit_wait_ms", "wall_ms",
-               "llm_retries", "harness_backfilled_tools", "model_findings_kept", "public_minimum_checks", "degraded", "model"]
+               "llm_retries", "harness_backfilled_tools", "model_findings_kept", "public_minimum_checks", "degraded",
+               "model_output_invalid", "model"]
 
 
 def _avg(rows: list[dict], key: str) -> float:
@@ -136,8 +140,8 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
     archs = [a for a in ("single", "staged") if any(r["architecture"] == a for r in rows)]
     # Only compare cases that every architecture completed, so an interrupted run cannot skew the table.
     complete = {c["case_id"] for c in cases
-                if all(any(r["case_id"] == c["case_id"] and r["architecture"] == a and not r["degraded"] for r in rows) for a in archs)}
-    scored = [r for r in rows if not r["degraded"] and r["case_id"] in complete]
+                if all(any(r["case_id"] == c["case_id"] and r["architecture"] == a for r in rows) for a in archs)}
+    scored = [r for r in rows if r["case_id"] in complete]
     by_arch = {a: [r for r in scored if r["architecture"] == a] for a in archs}
     names = {"single": "A - single agent", "staged": "B - staged (analyst + reviewer)"}
 
@@ -164,6 +168,7 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
         ("Model action overridden by policy guardrail (runs)", lambda a: str(sum("action_overridden" in r["guardrail_events"] for r in by_arch[a]))),
         ("Mandatory tools the agent skipped (run by harness)", lambda a: str(sum(r["harness_backfilled_tools"] for r in by_arch[a]))),
         ("Model call retries (invalid JSON / rate limit / 5xx)", lambda a: str(sum(r["llm_retries"] for r in by_arch[a]))),
+        ("Runs where model output stayed unusable (deterministic fallback)", lambda a: str(sum(r["degraded"] for r in by_arch[a]))),
     ]
     lines = [f"# Evaluation summary - {model}", "",
              f"{len(complete)} of {len(cases)} cases completed on every architecture; same cases, same tools, same policy "
@@ -177,10 +182,12 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
         cells = []
         for a in archs:
             rs = [r for r in rows if r["case_id"] == case["case_id"] and r["architecture"] == a]
-            cells.append("; ".join(("model unavailable" if r["degraded"] else f"`{r['action']}` {'PASS' if r['passed'] else 'FAIL'}") for r in rs) or "-")
+            cells.append("; ".join(f"`{r['action']}` {'PASS' if r['passed'] else 'FAIL'}"
+                                   + (" (model output unusable)" if r["degraded"] else "") for r in rs) or "-")
         lines.append(f"| {case['case_id']} {case['title']} | {case['edge_case']} | " + " | ".join(cells) + " |")
 
     problems = [r for r in scored if r["notes"]]
+    # rows stopped for quota never reach here: they are not written to runs.jsonl
     lines += ["", "## Everything the scorer or the guardrails flagged", ""]
     lines += [f"- **{r['case_id']} / {r['architecture']}** ({'FAIL' if not r['passed'] else 'pass'}): {r['notes']}" for r in
               sorted(problems, key=lambda r: (r["case_id"], r["architecture"]))] or ["- nothing"]
@@ -222,7 +229,8 @@ def main() -> None:
     rows: list[dict] = []
     if args.resume and runs_path.is_file():
         rows = [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        rows = [r for r in rows if not r["degraded"]]       # a run without the model is not a result; redo it
+        # a run where the model was unreachable is not a result; redo it
+        rows = [r for r in rows if not r["degraded"] or r.get("model_output_invalid")]
     runs_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     done = {(r["case_id"], r["architecture"], r["trial"]) for r in rows}
 
@@ -245,7 +253,7 @@ def main() -> None:
                     if (case["case_id"], architecture, trial) in done:
                         continue
                     row = run_one(case, requests_by_id[case["request_id"]], architecture, settings, trial, public)
-                    if row["degraded"]:
+                    if row["degraded"] and not row["model_output_invalid"]:
                         reason = next((e["detail"] for e in row["result"]["guardrail_events"] if e["kind"] == "degraded_mode"), "")
                         print(f"STOP  {case['case_id']} [{architecture}] model unavailable: {reason}")
                         stopped = reason

@@ -200,6 +200,9 @@ def finalize(ctx: RunContext, draft: ModelDraft | None, architecture: str, usage
             rationale = ""
     if not rationale:
         rationale = _fallback_rationale(action, a)
+    # The action and the flags must tell one story: recommending a check of the existing tool *is* an overlap finding.
+    if action == "review_existing_tool_first" and "existing_tool_overlap" not in flags:
+        flags.append("existing_tool_overlap")
 
     # ---- Missing information: required fields from the engine; model questions only where they are actionable
     missing = list(a.missing_information)

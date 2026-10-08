@@ -28,7 +28,15 @@ PROVIDERS = {
 
 
 class LLMError(RuntimeError):
-    """The model could not produce a usable answer (not configured, rate-limited, down, or invalid output)."""
+    """The model could not produce a usable answer (not configured, rate-limited, down, or invalid output).
+
+    `invalid_output` is True when the model was reachable but kept returning output that failed the schema:
+    that is a quality failure of the run, not an outage.
+    """
+
+    def __init__(self, message: str, invalid_output: bool = False) -> None:
+        super().__init__(message)
+        self.invalid_output = invalid_output
 
 
 class JsonLLM(Protocol):
@@ -143,6 +151,17 @@ class OpenAICompatLLM:
             payload["reasoning_effort"] = s.reasoning_effort
         estimated_tokens = (len(system) + len(user) + len(json.dumps(schema))) / 3.2 + 700
         last_error = "no attempt made"
+        invalid_output = False
+
+        def retry_differently() -> None:
+            # At temperature 0 an identical retry reproduces the same invalid output, so change the request.
+            nonlocal invalid_output
+            invalid_output = True
+            usage.llm_retries += 1
+            payload["temperature"] = 0.3
+            payload["messages"] = [{"role": "system", "content": system}, {"role": "user", "content": user + (
+                "\n\nYour previous answer was rejected because it did not match the required JSON schema. Return one JSON "
+                "object containing every one of these keys: " + ", ".join(schema.get("required", [])) + ".")}]
 
         for attempt in range(4):
             self._sleep_for_quota(self._bucket.wait_needed(estimated_tokens), usage)
@@ -172,9 +191,9 @@ class OpenAICompatLLM:
             if response.status_code != 200:
                 message = _error_message(response)
                 # A schema-validation miss is a sampling failure worth one more try; other 4xx are not.
-                if response.status_code == 400 and "json" in message.lower() and attempt < 2:
-                    last_error = f"model returned invalid JSON: {message}"
-                    usage.llm_retries += 1
+                if response.status_code == 400 and "json" in message.lower():
+                    last_error = f"model output did not match the schema: {message}"
+                    retry_differently()
                     continue
                 raise LLMError(f"Model request rejected (HTTP {response.status_code}): {message}")
 
@@ -187,12 +206,13 @@ class OpenAICompatLLM:
                 parsed = json.loads(body["choices"][0]["message"]["content"])
             except (KeyError, IndexError, TypeError, ValueError):
                 last_error = "model returned content that is not valid JSON"
-                usage.llm_retries += 1
+                retry_differently()
                 continue
             if isinstance(parsed, dict):
                 return parsed
             last_error = "model returned JSON that is not an object"
-        raise LLMError(f"Model call failed after retries: {last_error}")
+            retry_differently()
+        raise LLMError(f"Model call failed after retries: {last_error}", invalid_output=invalid_output)
 
 
 def _error_message(response: httpx.Response) -> str:

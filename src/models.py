@@ -197,4 +197,6 @@ class AnalysisResult(BaseModel):
     stages: list[dict[str, Any]] = Field(default_factory=list)
     usage: Usage = Field(default_factory=Usage)
     degraded: bool = False
+    # True when the model was reachable but its output was unusable (as opposed to down / out of quota / not configured)
+    model_output_invalid: bool = False
     model: str | None = None

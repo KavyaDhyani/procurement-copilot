@@ -32,6 +32,7 @@ def analyze_request(raw_request: dict, architecture: Architecture = "single", se
     usage, stages = Usage(), []
     draft: ModelDraft | None = None
     degraded_reason: str | None = None
+    model_output_invalid = False
     model: str | None = None
     try:
         llm = llm or OpenAICompatLLM()
@@ -39,12 +40,16 @@ def analyze_request(raw_request: dict, architecture: Architecture = "single", se
         draft = AGENTS[architecture](ctx, llm, usage, stages)
     except LLMError as exc:
         degraded_reason = str(exc)
+        model_output_invalid = exc.invalid_output
     except Exception as exc:  # an orchestration bug must not take the deterministic checks down with it
         degraded_reason = f"Agent failed unexpectedly ({type(exc).__name__}: {exc})"
+        model_output_invalid = True
 
     # Whatever the model did or did not do, the mandatory checks and the policy engine run.
     ensure_policy_evaluated(ctx)
-    return finalize(ctx, draft, architecture, usage, stages, degraded_reason=degraded_reason, model=model)
+    result = finalize(ctx, draft, architecture, usage, stages, degraded_reason=degraded_reason, model=model)
+    result.model_output_invalid = model_output_invalid
+    return result
 
 
 def handle_request(request_id: str, architecture: Architecture = "single") -> ProcurementDecision:
