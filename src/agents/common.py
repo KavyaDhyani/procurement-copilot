@@ -50,8 +50,8 @@ Return tool_requests and need_summary: one sentence, at most 30 words, restating
 
 ACTION_GUIDE = """\
 Actions - choose exactly one; an earlier action takes precedence over a later one:
-1. request_clarification - required request information is missing.
-2. manual_review - material evidence is unavailable (a tool/API failed) or two sources conflict.
+1. request_clarification - evaluate_policy_rules lists missing_information (a required field is absent). Having a question of your own is not enough; put that in clarification_questions.
+2. manual_review - material evidence is unavailable (a tool/API failed) or two sources conflict (vendor_risk_unavailable or conflicting_vendor_evidence).
 3. review_existing_tool_first - an approved catalog tool plausibly already meets the stated need and the request gives no credible gap, or the purchase would duplicate capacity the team already has.
 4. route_for_reviews - Security, Privacy or Legal review, or a Finance budget exception, is required.
 5. proceed_to_standard_approval - none of the above; only the standard approvers are needed."""
