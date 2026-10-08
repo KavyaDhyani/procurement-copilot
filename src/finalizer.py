@@ -81,6 +81,8 @@ def _fallback_rationale(action: str, a: PolicyAssessment) -> str:
         reasons = (["a Finance budget exception"] if {"budget_insufficient", "budget_unverified"} & set(a.risk_flags) else [])
         reasons += [f"{' / '.join(specialists)} review"] if specialists else []
         return "Policy requires " + " and ".join(reasons) + " before this can be approved."
+    if action == "review_existing_tool_first":
+        return "An approved tool that may already meet this need is in the catalog; that should be checked before a new purchase."
     return "No specialist review trigger was found; only the standard approvers for this amount are required."
 
 
@@ -188,7 +190,10 @@ def finalize(ctx: RunContext, draft: ModelDraft | None, architecture: str, usage
     if proposed in a.allowed_actions and (proposed != "review_existing_tool_first" or overlap_supported):
         action = proposed
     else:
-        action = a.default_action
+        # Not allowed by the policy results. Fall back to the engine's default, unless the model grounded a
+        # "this is already covered" judgement - then the cautious allowed action is to check the existing tool first.
+        duplicate_judged = draft is not None and draft.overlap_level in ("alternative_no_gap", "likely_duplicate") and existing_products
+        action = "review_existing_tool_first" if duplicate_judged and "review_existing_tool_first" in a.allowed_actions else a.default_action
         if draft is not None:
             events.append(GuardrailEvent(kind="action_overridden",
                                          detail=f"model proposed '{proposed}', but policy results allow only {a.allowed_actions}; using '{action}'"))

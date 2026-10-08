@@ -152,6 +152,7 @@ class OpenAICompatLLM:
                                       headers={"Authorization": f"Bearer {s.api_key}"})
             except httpx.HTTPError as exc:
                 usage.llm_ms += (time.perf_counter() - started) * 1000
+                usage.llm_retries += 1
                 last_error = f"{type(exc).__name__} calling the model endpoint"
                 time.sleep(0.5 * (attempt + 1))
                 continue
@@ -160,10 +161,12 @@ class OpenAICompatLLM:
 
             if response.status_code == 429:
                 last_error = "rate limited (HTTP 429)"
+                usage.llm_retries += 1
                 self._sleep_for_quota(_seconds(response.headers.get("retry-after")) or 5.0, usage)
                 continue
             if response.status_code >= 500:
                 last_error = f"model endpoint error (HTTP {response.status_code})"
+                usage.llm_retries += 1
                 time.sleep(0.5 * (attempt + 1))
                 continue
             if response.status_code != 200:
@@ -171,7 +174,7 @@ class OpenAICompatLLM:
                 # A schema-validation miss is a sampling failure worth one more try; other 4xx are not.
                 if response.status_code == 400 and "json" in message.lower() and attempt < 2:
                     last_error = f"model returned invalid JSON: {message}"
-                    usage.llm_calls += 1
+                    usage.llm_retries += 1
                     continue
                 raise LLMError(f"Model request rejected (HTTP {response.status_code}): {message}")
 
@@ -184,6 +187,7 @@ class OpenAICompatLLM:
                 parsed = json.loads(body["choices"][0]["message"]["content"])
             except (KeyError, IndexError, TypeError, ValueError):
                 last_error = "model returned content that is not valid JSON"
+                usage.llm_retries += 1
                 continue
             if isinstance(parsed, dict):
                 return parsed

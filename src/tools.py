@@ -181,9 +181,8 @@ def _search_catalog(ctx: RunContext, keywords: list[str]):
             "vendor_name": row["vendor_name"], "status": row["status"],
             "annual_cost_usd": _to_float(row["annual_cost_usd"]), "licensed_seats": _to_float(row["licensed_seats"]),
             "scope": row["scope"], "notes": row.get("notes") or None, "match_reasons": reasons,
-            "last_purchase": ({"purchase_id": last["purchase_id"], "date": last["purchase_date"],
-                               "department": last["department"], "annual_amount_usd": _to_float(last["annual_amount_usd"]),
-                               "notes": last.get("notes") or None} if last else None),
+            "last_purchase": (f"{last['purchase_id']} on {last['purchase_date']} by {last['department']}, "
+                              f"${_to_float(last['annual_amount_usd']) or 0:,.0f}/yr ({last.get('notes') or 'no notes'})" if last else None),
         })
 
     def rank(m: dict) -> tuple:
@@ -322,21 +321,21 @@ _NULLABLE_STR = {"type": ["string", "null"]}
 
 TOOLS: dict[str, ToolSpec] = {spec.name: spec for spec in [
     ToolSpec("check_budget",
-             "Compare the request's annual cost with the requester's department available software budget. Also returns the requester's department and manager.",
+             "Compare the annual cost with the requester's department available software budget; also returns department and manager.",
              {"requester_id": _NULLABLE_STR, "annual_cost_usd": {"type": ["number", "null"]}},
              _budget_args, _check_budget),
     ToolSpec("search_software_catalog",
-             "Search the approved software catalog (with last purchase). Always returns entries for the same product, vendor or category as the request; add keywords naming the capability NEEDED to also find other existing tools that could meet the need.",
+             "Search the approved software catalog. Always returns entries for the request's own product, vendor and category; keywords naming the capability NEEDED also find other existing tools that could meet it.",
              {"keywords": {"type": "array", "items": {"type": "string"}}},
              _catalog_args, _search_catalog),
     ToolSpec("lookup_vendor_registry",
-             "Internal procurement registry record for a vendor: onboarding status, security status and review date, legal terms status.",
+             "Internal vendor registry: onboarding status, security status and review date, legal terms status.",
              {"vendor_name": {"type": "string"}}, _vendor_args, _lookup_vendor_registry),
     ToolSpec("get_vendor_risk",
-             "External vendor-risk service: current security review status/date, risk level, personal-data and data-residency facts. May be unavailable.",
+             "External vendor-risk service: security review status/date, risk level, personal-data and data-residency facts. May be unavailable.",
              {"vendor_name": {"type": "string"}}, _vendor_args, _get_vendor_risk, deterministic=False),
     ToolSpec("evaluate_policy_rules",
-             "Deterministic policy engine: required fields, budget rule, approval thresholds, Security/Privacy/Legal triggers, review expiry, source conflicts. Pass every sensitive data class the request involves.",
+             "Deterministic policy engine: required fields, budget, approval thresholds, Security/Privacy/Legal triggers, review expiry, source conflicts. Pass the sensitive data classes involved.",
              {"data_classes": {"type": "array", "items": {"type": "string", "enum": list(DATA_CLASSES)}}},
              _policy_args, _evaluate_policy),
 ]}

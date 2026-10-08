@@ -22,7 +22,7 @@ The evidence you asked for is below. Recommend the next action.
 {common.OVERLAP_GUIDE}
 
 {common.FINDINGS_GUIDE}
-rationale: one or two sentences, facts only, explaining the action.
+rationale: at most 40 words, facts only, explaining the action.
 clarification_questions: at most 2, only for something the requester must answer before review can continue; otherwise [].
 {common.FOLLOW_UP_GUIDE}"""
 
@@ -41,10 +41,10 @@ def run(ctx: RunContext, llm: JsonLLM, usage: Usage, stages: list[dict]) -> Mode
         final_round = round_number == common.MAX_FOLLOW_UP_ROUNDS
         user = f"{DECIDE_INSTRUCTIONS}\n\n{request_block}\n{common.render_ledger(ctx.ledger)}"
         if final_round:
-            user += "\nNo further tool rounds are available: set follow_up_tool_requests to []."
+            user += "\nNo further searches are available: set follow_up_catalog_keywords to []."
         decision = llm.complete_json(SYSTEM, user, "recommendation", common.decision_schema(), usage)
         stages.append({"stage": "decide", "agent": "Procurement Agent", "output": decision})
-        if final_round or not common.execute_tool_requests(ctx, decision.get("follow_up_tool_requests")):
+        if final_round or not common.run_follow_up_search(ctx, decision.get("follow_up_catalog_keywords")):
             break
 
     draft.apply_evidence_fields(decision)

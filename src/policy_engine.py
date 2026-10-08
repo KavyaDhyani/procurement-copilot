@@ -163,7 +163,7 @@ def assess(
         if budget["within_budget"]:
             hit("budget_check", "Policy section 2",
                 f"Annual cost ${cost:,.2f} is within {budget['department']}'s available software budget "
-                f"${available:,.2f}. A positive budget check does not imply approval.")
+                f"${available:,.2f} (this alone does not imply approval).")
         else:
             hit("budget_check", "Policy section 2",
                 f"Annual cost ${cost:,.2f} exceeds {budget['department']}'s available software budget "
@@ -312,8 +312,8 @@ def assess(
     if overlap_candidates:
         hit("existing_tool_overlap", "Policy section 3",
             "Approved catalog already contains " + ", ".join(overlap_candidates)
-            + " in the same category or as the same product. Overlap is not an automatic rejection; "
-            "the existing option must be considered before a new purchase.",
+            + " in the same category or as the same product; consider the existing option first "
+            "(overlap is not an automatic rejection).",
             add_flags=("existing_tool_overlap",))
     elif same_vendor_products:
         hit("existing_vendor_product", "Policy section 3",

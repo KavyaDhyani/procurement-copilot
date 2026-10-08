@@ -173,6 +173,7 @@ class GuardrailEvent(BaseModel):
 
 class Usage(BaseModel):
     llm_calls: int = 0
+    llm_retries: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
     llm_ms: float = 0.0

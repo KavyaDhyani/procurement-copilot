@@ -34,8 +34,8 @@ Ground rules:
 - You never approve, purchase, or change budgets."""
 
 DATA_CLASS_GUIDE = """\
-Sensitive data classes (list a class only when the request clearly involves it):
-source_code; production_access (production systems or cloud accounts); confidential_documents; employee_pii; customer_pii; personal_data (personal data, unclear whose); credentials (passwords, secrets, keys)."""
+Sensitive data classes - list a class only when the request explicitly involves that data; when unsure leave it out:
+source_code; production_access (production systems or cloud accounts); confidential_documents; employee_pii; customer_pii; personal_data (personal data, unclear whose); credentials (the tool would store or read passwords, secrets or keys - logging in through SSO does NOT count)."""
 
 PLAN_INSTRUCTIONS = f"""\
 Plan the evidence gathering for the request below.
@@ -46,7 +46,7 @@ Tools:
 Policy requires the budget, catalog, vendor-registry, vendor-risk and policy-rule checks on every request, so request each of them (pass null or [] where the request has no value). In search_software_catalog keywords give 2-5 capability words describing the underlying need, so existing tools that could already meet it are found. In evaluate_policy_rules list the sensitive data classes involved, judged from the data-access level, integrations and stated purpose.
 {DATA_CLASS_GUIDE}
 
-Return need_summary (one sentence: the underlying business need, in your own words) and tool_requests."""
+Return tool_requests and need_summary: one sentence, at most 30 words, restating the business need using only what the request says. If, and only if, the request itself explains why an existing tool is not enough, include that reason; never supply one yourself."""
 
 ACTION_GUIDE = """\
 Actions - choose exactly one; an earlier action takes precedence over a later one:
@@ -69,10 +69,10 @@ overlap.assessment:
 overlap.existing_products must be product names copied from catalog tool results (or [])."""
 
 FINDINGS_GUIDE = """\
-key_findings: at most 4 short findings that matter most to the human reviewer. Each must cite the evidence_ids (E1, E2, ...) it rests on and may only restate facts from those entries - copy figures and dates exactly."""
+key_findings: at most 3 findings (each under 25 words) that matter most to the human reviewer. Each must cite the evidence_ids (E1, E2, ...) it rests on and may only restate facts from those entries - copy figures and dates exactly."""
 
 FOLLOW_UP_GUIDE = """\
-follow_up_tool_requests: normally []. Request more tool calls only if a specific gap in the evidence would change your answer (for example a catalog search with different keywords)."""
+follow_up_catalog_keywords: normally []. Give new keywords only if one more catalog search with different capability words could reveal an existing tool that meets the need."""
 
 
 # --- Structured-output schemas (strict JSON schema: every property required, no extras) ------
@@ -104,17 +104,15 @@ def evidence_fields() -> dict[str, dict]:
 
 def decision_schema() -> dict:
     return _obj({**evidence_fields(), "action": _ACTION, "rationale": _STR, "clarification_questions": _STR_LIST,
-                 "follow_up_tool_requests": {"type": "array", "items": tool_request_schema()}})
+                 "follow_up_catalog_keywords": _STR_LIST})
 
 
 def evidence_pack_schema() -> dict:
-    return _obj({**evidence_fields(), "open_questions": _STR_LIST,
-                 "follow_up_tool_requests": {"type": "array", "items": tool_request_schema()}})
+    return _obj({**evidence_fields(), "open_questions": _STR_LIST, "follow_up_catalog_keywords": _STR_LIST})
 
 
 def review_schema() -> dict:
-    return _obj({"action": _ACTION, "rationale": _STR,
-                 "overlap_assessment": {"type": "string", "enum": list(OVERLAP_LEVELS)},
+    return _obj({"action": _ACTION, "rationale": _STR, "overlap": _OVERLAP,
                  "rejected_finding_numbers": {"type": "array", "items": {"type": "integer"}},
                  "clarification_questions": _STR_LIST})
 
@@ -149,15 +147,18 @@ class ModelDraft(BaseModel):
     rationale: str = ""
     clarification_questions: list[str] = Field(default_factory=list)
 
-    def apply_evidence_fields(self, raw: dict) -> None:
-        overlap = raw.get("overlap") if isinstance(raw.get("overlap"), dict) else {}
+    def apply_overlap(self, overlap: Any) -> None:
+        overlap = overlap if isinstance(overlap, dict) else {}
         level = overlap.get("assessment")
         self.overlap_level = level if level in OVERLAP_LEVELS else "none"
         self.overlap_products = [str(p) for p in (overlap.get("existing_products") or []) if p][:5]
         self.overlap_reason = str(overlap.get("reason") or "")[:400]
+
+    def apply_evidence_fields(self, raw: dict) -> None:
+        self.apply_overlap(raw.get("overlap"))
         self.injection_suspected = raw.get("injection_suspected") is True
         self.injection_quote = str(raw["injection_quote"])[:300] if raw.get("injection_quote") else None
-        self.key_findings = [Finding.model_validate(f) for f in (raw.get("key_findings") or []) if isinstance(f, dict)][:4]
+        self.key_findings = [Finding.model_validate(f) for f in (raw.get("key_findings") or []) if isinstance(f, dict)][:3]
 
 
 # --- Context rendering ----------------------------------------------------------------------
@@ -182,8 +183,15 @@ def render_request(request: ProcurementRequest, include_free_text: bool = True) 
     return "<request>\n" + _dumps(data) + "\n</request>"
 
 
-def render_ledger(ledger: list[ToolCall]) -> str:
-    lines = [f"{e.evidence_id} {e.tool}({_dumps(e.arguments)}) -> {_dumps(_compact(e.output))}" for e in ledger]
+def render_ledger(ledger: list[ToolCall], summaries_only: bool = False) -> str:
+    """Tool results for a prompt. `summaries_only` gives the deterministic one-line summary of each lookup
+    (no vendor/requester free text) and the full output only for the policy engine."""
+    lines = []
+    for e in ledger:
+        if summaries_only and e.tool != "evaluate_policy_rules":
+            lines.append(f"{e.evidence_id} {e.tool}: {e.summary}")
+        else:
+            lines.append(f"{e.evidence_id} {e.tool}({_dumps(e.arguments)}) -> {_dumps(_compact(e.output))}")
     return "<tool_results>\n" + "\n".join(lines) + "\n</tool_results>"
 
 
@@ -201,6 +209,15 @@ def execute_tool_requests(ctx: RunContext, tool_requests: Any) -> int:
     for request in requests:
         ctx.call(str(request.get("tool")), {k: v for k, v in request.items() if k != "tool"}, requested_by="agent")
     return len(ctx.ledger) - before
+
+
+def run_follow_up_search(ctx: RunContext, keywords: Any) -> bool:
+    """The one reactive step an agent may take after seeing evidence: another catalog search. True if it found a new entry."""
+    if not isinstance(keywords, list) or not any(isinstance(k, str) and k.strip() for k in keywords):
+        return False
+    before = len(ctx.ledger)
+    ctx.call("search_software_catalog", {"keywords": keywords}, requested_by="agent")
+    return len(ctx.ledger) > before
 
 
 def ensure_policy_evaluated(ctx: RunContext) -> None:

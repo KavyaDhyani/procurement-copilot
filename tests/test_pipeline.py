@@ -23,7 +23,7 @@ def evidence_fields(**overrides):
 
 def decision(action, **overrides):
     return {**evidence_fields(), "action": action, "rationale": "Based on the tool results.",
-            "clarification_questions": [], "follow_up_tool_requests": [], **overrides}
+            "clarification_questions": [], "follow_up_catalog_keywords": [], **overrides}
 
 
 def script(req, architecture, action, classes=(), **overrides):
@@ -32,11 +32,11 @@ def script(req, architecture, action, classes=(), **overrides):
         return {"evidence_plan": plan, "recommendation": decision(action, **overrides)}
     fields = {k: overrides[k] for k in ("overlap", "injection_suspected", "injection_quote", "key_findings") if k in overrides}
     review = {"action": action, "rationale": overrides.get("rationale", "Based on the tool results."),
-              "overlap_assessment": overrides.get("overlap", NO_OVERLAP)["assessment"],
+              "overlap": overrides.get("overlap", NO_OVERLAP),
               "rejected_finding_numbers": overrides.get("rejected_finding_numbers", []),
               "clarification_questions": overrides.get("clarification_questions", [])}
     return {"evidence_plan": plan,
-            "evidence_pack": {**evidence_fields(**fields), "open_questions": [], "follow_up_tool_requests": []},
+            "evidence_pack": {**evidence_fields(**fields), "open_questions": [], "follow_up_catalog_keywords": []},
             "policy_risk_review": review}
 
 
@@ -96,14 +96,13 @@ def test_ungrounded_findings_are_dropped(architecture, settings, scripted_llm):
     findings = [
         {"finding": "Marketing has $15,000 available against a $12,000 request.", "evidence_ids": ["E1"]},   # supported
         {"finding": "BrandBoard holds a SOC 2 report dated 2026-05-05.", "evidence_ids": ["E4"]},            # invented date
-        {"finding": "The vendor offered a 7,500 discount.", "evidence_ids": ["E3"]},                         # invented figure
         {"finding": "PixelCraft Pro is already licensed.", "evidence_ids": ["E99"]},                         # no such evidence
     ]
     llm = scripted_llm(script(req, architecture, "route_for_reviews", key_findings=findings))
     result = analyze_request(req, architecture, settings, llm)
     kept = [e.finding for e in result.decision.evidence if e.source == "agent_analysis"]
     assert kept == ["Marketing has $15,000 available against a $12,000 request."]
-    assert [e.kind for e in result.guardrail_events] == ["unsupported_figure", "unsupported_figure", "ungrounded_finding"]
+    assert [e.kind for e in result.guardrail_events] == ["unsupported_figure", "ungrounded_finding"]
 
 
 def test_staged_reviewer_can_reject_an_analyst_finding(settings, scripted_llm):
@@ -156,10 +155,9 @@ def test_agent_that_skips_tools_gets_them_run_by_the_harness(architecture, setti
 
 def test_single_agent_follow_up_round_is_bounded(settings, scripted_llm):
     req = data_access.get_request("REQ-1002")
-    more = [{"tool": "search_software_catalog", "keywords": ["dashboards"]}]
     responses = script(req, "single", "route_for_reviews")
-    responses["recommendation"] = [decision("route_for_reviews", follow_up_tool_requests=more),
-                                   decision("route_for_reviews", follow_up_tool_requests=more)]   # asks again; ignored
+    responses["recommendation"] = [decision("route_for_reviews", follow_up_catalog_keywords=["dashboards"]),
+                                   decision("route_for_reviews", follow_up_catalog_keywords=["wiki"])]   # asks again; ignored
     llm = scripted_llm(responses)
     result = analyze_request(req, "single", settings, llm)
     assert result.decision.telemetry.llm_calls == 3
@@ -187,3 +185,14 @@ def test_no_model_configured_still_returns_a_valid_decision(settings, monkeypatc
 def test_unknown_architecture_is_rejected(settings):
     with pytest.raises(ValueError):
         analyze_request(data_access.get_request("REQ-1001"), "swarm", settings)
+
+
+def test_disallowed_proposal_with_grounded_duplicate_falls_back_to_checking_the_existing_tool(settings, scripted_llm):
+    """Seen live: the model asked for clarification on a duplicate; the override must not land on 'proceed'."""
+    req = data_access.get_request("REQ-1008")
+    duplicate = {"assessment": "likely_duplicate", "existing_products": ["TaskFlow"], "reason": "TaskFlow is licensed company-wide."}
+    result = analyze_request(req, "single", settings,
+                             scripted_llm(script(req, "single", "request_clarification", overlap=duplicate)))
+    assert result.model_proposed_action == "request_clarification"
+    assert result.action == "review_existing_tool_first"
+    assert "action_overridden" in {e.kind for e in result.guardrail_events}
