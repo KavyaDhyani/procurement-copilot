@@ -1,0 +1,5 @@
+case_id,architecture,trial,correct_next_action,grounded_evidence,policy_followed,human_escalation_correct,passed,latency_ms,llm_calls,tool_calls,notes,action,model_proposed_action,model_action_correct,tokens,rate_limit_wait_ms,wall_ms,llm_retries,harness_backfilled_tools,model_findings_kept,public_minimum_checks,degraded,model
+FX-03,single,1,True,True,True,True,True,5800,2,5,,route_for_reviews,route_for_reviews,True,3620,0,5801,0,0,3,,False,openai/gpt-oss-120b
+FX-03,staged,1,True,True,True,True,True,5052,3,5,,route_for_reviews,route_for_reviews,True,5507,7575,12629,0,0,3,,False,openai/gpt-oss-120b
+FX-04,single,1,True,True,True,True,True,2800,2,5,,route_for_reviews,route_for_reviews,True,3505,23384,26190,0,0,3,,False,openai/gpt-oss-120b
+FX-04,staged,1,True,True,True,True,True,4439,3,5,,route_for_reviews,route_for_reviews,True,5538,32795,37237,0,0,4,,False,openai/gpt-oss-120b

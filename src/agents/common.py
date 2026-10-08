@@ -34,8 +34,8 @@ Ground rules:
 - You never approve, purchase, or change budgets."""
 
 DATA_CLASS_GUIDE = """\
-Sensitive data classes - list a class only when the request explicitly involves that data; when unsure leave it out:
-source_code; production_access (production systems or cloud accounts); confidential_documents; employee_pii; customer_pii; personal_data (personal data, unclear whose); credentials (the tool would store or read passwords, secrets or keys - logging in through SSO does NOT count)."""
+Sensitive data classes: source_code; production_access (production systems or cloud accounts); confidential_documents; employee_pii; customer_pii; personal_data (personal data, unclear whose); credentials (the tool would store or read passwords, secrets or keys - logging in through SSO does NOT count).
+The data_access_level field is the requester's own declaration: respect it. Add a class beyond it only when the request text explicitly names that kind of data (for example "salary files", "customer email addresses", "API keys", "production database"); when unsure, leave it out. Documents, agreements or files described as internal are not confidential_documents unless the request calls them confidential or restricted."""
 
 PLAN_INSTRUCTIONS = f"""\
 Plan the evidence gathering for the request below.
