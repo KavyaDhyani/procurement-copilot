@@ -1,5 +1,37 @@
-case_id,architecture,trial,correct_next_action,grounded_evidence,policy_followed,human_escalation_correct,passed,latency_ms,llm_calls,tool_calls,notes,action,model_proposed_action,model_action_correct,tokens,rate_limit_wait_ms,wall_ms,llm_retries,harness_backfilled_tools,model_findings_kept,public_minimum_checks,degraded,model
-FX-03,single,1,True,True,True,True,True,5800,2,5,,route_for_reviews,route_for_reviews,True,3620,0,5801,0,0,3,,False,openai/gpt-oss-120b
-FX-03,staged,1,True,True,True,True,True,5052,3,5,,route_for_reviews,route_for_reviews,True,5507,7575,12629,0,0,3,,False,openai/gpt-oss-120b
-FX-04,single,1,True,True,True,True,True,2800,2,5,,route_for_reviews,route_for_reviews,True,3505,23384,26190,0,0,3,,False,openai/gpt-oss-120b
-FX-04,staged,1,True,True,True,True,True,4439,3,5,,route_for_reviews,route_for_reviews,True,5538,32795,37237,0,0,4,,False,openai/gpt-oss-120b
+case_id,architecture,trial,correct_next_action,grounded_evidence,policy_followed,human_escalation_correct,passed,latency_ms,llm_calls,tool_calls,notes,action,model_proposed_action,model_action_correct,tokens,rate_limit_wait_ms,wall_ms,llm_retries,harness_backfilled_tools,model_findings_kept,public_minimum_checks,degraded,model_output_invalid,model
+DS-01,single,1,True,True,True,True,True,3714,2,5,,proceed_to_standard_approval,,,3416,0,,,,,,False,,openai/gpt-oss-120b
+DS-01,staged,1,True,True,True,True,True,5092,3,5,,proceed_to_standard_approval,,,5334,13000,,,,,,False,,openai/gpt-oss-120b
+DS-02,single,1,True,True,True,True,True,2624,2,5,,route_for_reviews,,,3718,24000,,,,,,False,,openai/gpt-oss-120b
+DS-02,staged,1,True,True,True,True,True,6737,3,5,,route_for_reviews,,,5749,28000,,,,,,False,,openai/gpt-oss-120b
+DS-03,single,1,True,True,True,True,True,2685,2,5,,route_for_reviews,,,3522,22000,,,,,,False,,openai/gpt-oss-120b
+DS-03,staged,1,True,True,True,True,True,5178,3,5,,route_for_reviews,,,5305,34000,,,,,,False,,openai/gpt-oss-120b
+DS-04,single,1,True,True,True,True,True,3449,2,5,,route_for_reviews,,,3898,23000,,,,,,False,,openai/gpt-oss-120b
+DS-04,staged,1,True,True,True,True,True,4128,3,5,,route_for_reviews,,,5771,34000,,,,,,False,,openai/gpt-oss-120b
+DS-05,single,1,True,True,True,True,True,2917,2,5,,route_for_reviews,,,3543,23000,,,,,,False,,openai/gpt-oss-120b
+DS-05,staged,1,True,True,True,True,True,4619,3,5,,route_for_reviews,,,5476,23000,,,,,,False,,openai/gpt-oss-120b
+DS-06,single,1,True,True,True,True,True,3166,2,5,,request_clarification,,,3630,22000,,,,,,False,,openai/gpt-oss-120b
+DS-06,staged,1,True,True,True,True,True,4498,3,5,,request_clarification,,,5460,31000,,,,,,False,,openai/gpt-oss-120b
+DS-07,single,1,True,True,True,True,True,2961,2,5,,manual_review,,,3792,24000,,,,,,False,,openai/gpt-oss-120b
+DS-07,staged,1,True,True,True,True,True,4523,3,5,,manual_review,,,5605,28000,,,,,,False,,openai/gpt-oss-120b
+DS-08,single,1,True,True,False,True,False,4140,2,5,flags missing ['existing_tool_overlap'],review_existing_tool_first,,,3416,20000,,,,,,False,,openai/gpt-oss-120b
+DS-08,staged,1,False,True,False,False,False,7091,3,5,"action proceed_to_standard_approval, expected ['review_existing_tool_first']; flags missing ['existing_tool_overlap']; escalation: waved through",proceed_to_standard_approval,,,5202,28000,,,,,,False,,openai/gpt-oss-120b
+DS-09,single,1,True,True,True,True,True,2944,2,5,,manual_review,,,3412,12000,,,,,,False,,openai/gpt-oss-120b
+DS-09,staged,1,True,True,True,True,True,6491,4,6,,manual_review,,,7159,27000,,,,,,False,,openai/gpt-oss-120b
+DS-10,single,1,False,True,False,True,False,3571,2,5,"action review_existing_tool_first, expected ['proceed_to_standard_approval']; 2 missing-info items > 0",review_existing_tool_first,,,3514,20000,,,,,,False,,openai/gpt-oss-120b
+DS-10,staged,1,True,True,True,True,True,5399,3,5,,proceed_to_standard_approval,,,5155,30000,,,,,,False,,openai/gpt-oss-120b
+FX-01,single,1,True,True,True,True,True,2889,2,5,,route_for_reviews,,,3434,19000,,,,,,False,,openai/gpt-oss-120b
+FX-01,staged,1,True,True,True,True,True,4167,3,5,,route_for_reviews,,,5142,32000,,,,,,False,,openai/gpt-oss-120b
+FX-02,single,1,True,True,True,True,True,4866,2,5,,review_existing_tool_first,,,3520,15000,,,,,,False,,openai/gpt-oss-120b
+FX-02,staged,1,False,True,True,True,False,4919,3,5,"action route_for_reviews, expected ['review_existing_tool_first']",route_for_reviews,,,5273,23000,,,,,,False,,openai/gpt-oss-120b
+FX-03,single,1,True,True,True,True,True,4482,2,5,,route_for_reviews,,,3755,16000,,,,,,False,,openai/gpt-oss-120b
+FX-03,staged,1,True,True,True,True,True,4122,3,5,,route_for_reviews,,,5674,21000,,,,,,False,,openai/gpt-oss-120b
+FX-04,single,1,True,True,True,True,True,2857,2,5,,route_for_reviews,,,3650,23000,,,,,,False,,openai/gpt-oss-120b
+FX-04,staged,1,True,True,True,True,True,4409,3,5,,route_for_reviews,,,5602,27000,,,,,,False,,openai/gpt-oss-120b
+FX-05,single,1,True,True,True,True,True,3496,2,5,,proceed_to_standard_approval,,,3259,15000,,,,,,False,,openai/gpt-oss-120b
+FX-05,staged,1,True,True,True,True,True,3459,3,5,,proceed_to_standard_approval,,,4653,18000,,,,,,False,,openai/gpt-oss-120b
+FX-06,single,1,True,True,True,True,True,3142,2,5,,route_for_reviews,,,3412,16000,,,,,,False,,openai/gpt-oss-120b
+FX-06,staged,1,True,True,True,True,True,4365,3,5,,route_for_reviews,,,5112,32000,,,,,,False,,openai/gpt-oss-120b
+FX-07,single,1,True,True,True,True,True,4763,2,5,,manual_review,,,3219,11000,,,,,,False,,openai/gpt-oss-120b
+FX-07,staged,1,True,True,True,True,True,6515,3,5,,manual_review,,,4825,14000,,,,,,False,,openai/gpt-oss-120b
+FX-08,single,1,True,True,True,True,True,3973,2,5,,request_clarification,,,3743,17000,,,,,,False,,openai/gpt-oss-120b
+FX-08,staged,1,True,True,True,True,True,4757,3,5,,request_clarification,,,5599,26000,,,,,,False,,openai/gpt-oss-120b

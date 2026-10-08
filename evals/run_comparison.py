@@ -49,6 +49,14 @@ GROUNDING_EVENTS = {"ungrounded_finding", "unsupported_figure", "ungrounded_over
 CRITERIA = ["correct_next_action", "grounded_evidence", "policy_followed", "human_escalation_correct"]
 
 
+def _show(path: Path) -> str:
+    """Path for messages: relative to the repo when inside it, absolute otherwise (e.g. --out elsewhere)."""
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def score(result: AnalysisResult, expected: dict) -> dict:
     d = result.decision
     notes: list[str] = []
@@ -164,7 +172,7 @@ def _avg(rows: list[dict], key: str) -> float:
     return sum(r[key] for r in rows) / len(rows) if rows else 0.0
 
 
-def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str, replay_changes: list[str] | None = None) -> None:
+def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str, provenance: list[str] | None = None) -> None:
     with (out_dir / "results.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
         writer.writeheader()
@@ -190,7 +198,8 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
         ("Policy + deterministic rules followed", lambda a: frac(a, "policy_followed")),
         ("Human escalation correct", lambda a: frac(a, "human_escalation_correct")),
         ("Public cases meeting the starter's minimum checks",
-         lambda a: (lambda rs: f"{sum(r['public_minimum_checks'] for r in rs)}/{len(rs)}")([r for r in by_arch[a] if "public_minimum_checks" in r])),
+         lambda a: (lambda rs: f"{sum(r['public_minimum_checks'] for r in rs)}/{len(rs)}" if rs else "not recorded")(
+             [r for r in by_arch[a] if "public_minimum_checks" in r])),
         ("Avg processing latency (model + tools, ms)", lambda a: f"{_avg(by_arch[a], 'latency_ms'):,.0f}"),
         ("Avg LLM calls", lambda a: f"{_avg(by_arch[a], 'llm_calls'):.2f}"),
         ("Avg tool calls", lambda a: f"{_avg(by_arch[a], 'tool_calls'):.2f}"),
@@ -207,7 +216,14 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
              f"{len(complete)} of {len(cases)} cases completed on every architecture; same cases, same tools, same policy "
              f"engine, same scoring. Runs scored: {len(scored)}.", "",
              "| Metric | " + " | ".join(names[a] for a in archs) + " |", "|---|" + "---:|" * len(archs)]
-    lines += [f"| {label} | " + " | ".join(fn(a) for a in archs) + " |" for label, fn in metric_rows]
+
+    def cell(fn, a: str) -> str:
+        try:                                   # a reconstructed record may lack a counter; say so rather than guess
+            return fn(a)
+        except KeyError:
+            return "not recorded"
+
+    lines += [f"| {label} | " + " | ".join(cell(fn, a) for a in archs) + " |" for label, fn in metric_rows]
 
     lines += ["", "## Per case", "", "| Case | What it tests | " + " | ".join(f"{a}: action (pass?)" for a in archs) + " |",
               "|---|---|" + "---|" * len(archs)]
@@ -224,12 +240,8 @@ def write_reports(out_dir: Path, rows: list[dict], cases: list[dict], model: str
     lines += ["", "## Everything the scorer or the guardrails flagged", ""]
     lines += [f"- **{r['case_id']} / {r['architecture']}** ({'FAIL' if not r['passed'] else 'pass'}): {r['notes']}" for r in
               sorted(problems, key=lambda r: (r["case_id"], r["architecture"]))] or ["- nothing"]
-    if replay_changes is not None:
-        lines += ["", "## Provenance", "",
-                  "These numbers come from the model outputs recorded in the live run (`runs_live.jsonl`), re-run through the "
-                  "current tools, policy engine and finalizer with `--replay`. Latency, call counts and tokens are the live "
-                  "measurements. Outcomes that differ from what the live run produced at the time:", ""]
-        lines += [f"- {c}" for c in replay_changes] or ["- none"]
+    if provenance:
+        lines += ["", "## Provenance", "", *provenance]
     (out_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -241,6 +253,7 @@ def main() -> None:
     parser.add_argument("--cases", default="all", help="'all', or comma-separated case ids (e.g. DS-01,FX-04)")
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--resume", action="store_true", help="keep existing runs in the output folder and only run what is missing")
+    parser.add_argument("--overwrite", action="store_true", help="discard recorded runs in the output folder and start a fresh live run")
     parser.add_argument("--report-only", action="store_true", help="rebuild the reports from runs.jsonl without calling the model")
     parser.add_argument("--replay", action="store_true",
                         help="re-run the recorded model outputs (runs_live.jsonl) through the current tools, policy engine and finalizer")
@@ -262,20 +275,6 @@ def main() -> None:
     architectures = args.architectures.split(",")
     public = {c["request_id"]: c["expectations"] for c in json.loads((ROOT / "evals" / "public_cases.json").read_text(encoding="utf-8"))}
 
-    if args.report_only:
-        rows = [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        write_reports(out_dir, rows, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in rows)], model)
-        print(f"Rebuilt {out_dir.relative_to(ROOT)}/summary.md and results.csv from {len(rows)} saved runs")
-        return
-
-    rows: list[dict] = []
-    if args.resume and runs_path.is_file():
-        rows = [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        # a run where the model was unreachable is not a result; redo it
-        rows = [r for r in rows if not r["degraded"] or r.get("model_output_invalid")]
-    runs_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    done = {(r["case_id"], r["architecture"], r["trial"]) for r in rows}
-
     base = Settings.from_env()
     datasets = {
         "data": (base, {r["request_id"]: r for r in json.loads((base.data_dir / "requests.json").read_text(encoding="utf-8"))}),
@@ -283,13 +282,23 @@ def main() -> None:
         "fixtures": (Settings(data_dir=FIXTURE_DIR, vendor_risk_base_url=FIXTURE_API, vendor_risk_timeout_seconds=1.0),
                      {r["request_id"]: r for r in json.loads((FIXTURE_DIR / "requests.json").read_text(encoding="utf-8"))}),
     }
-    print(f"Model: {model}\nCases: {len(cases)}  architectures: {architectures}  trials: {args.trials}  -> {out_dir.relative_to(ROOT)}\n")
+
+    def load(path: Path) -> list[dict]:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.is_file() else []
+
+    # ---- read-only modes first: nothing below this block may run for them
+    if args.report_only:
+        rows = load(runs_path)
+        write_reports(out_dir, rows, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in rows)], model)
+        print(f"Rebuilt {_show(out_dir)}/summary.md and results.csv from {len(rows)} saved runs")
+        return
 
     if args.replay:
-        source = live_path if live_path.is_file() else runs_path
-        live_rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
-        if not live_path.is_file():
-            live_path.write_text(runs_path.read_text(encoding="utf-8"), encoding="utf-8")
+        live_rows = load(live_path) or load(runs_path)
+        if not live_rows:
+            sys.exit(f"Nothing to replay: no recorded runs in {_show(out_dir)}/")
+        if not load(live_path):                      # first replay: preserve the live record before anything is rewritten
+            live_path.write_text("".join(json.dumps(r) + "\n" for r in live_rows), encoding="utf-8")
         case_by_id = {c["case_id"]: c for c in all_cases}
         replayed, changed = [], []
         with vendor_api(base.vendor_risk_base_url), vendor_api(FIXTURE_API, FIXTURE_DIR / "vendor_risk.json"):
@@ -301,13 +310,31 @@ def main() -> None:
                 if (row["passed"], row["action"]) != (live["passed"], live["action"]):
                     changed.append(f"{row['case_id']} [{row['architecture']}]: live {live['action']} "
                                    f"{'PASS' if live['passed'] else 'FAIL'} -> now {row['action']} {'PASS' if row['passed'] else 'FAIL'}")
+        assert len(replayed) == len(live_rows)
         runs_path.write_text("".join(json.dumps(r) + "\n" for r in replayed), encoding="utf-8")
-        write_reports(out_dir, replayed, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in replayed)], model, changed)
-        print(f"Replayed {len(replayed)} recorded runs through the current code -> {out_dir.relative_to(ROOT)}/")
+        provenance = ["These numbers come from the model outputs recorded in the live run (`runs_live.jsonl`), re-run through the "
+                      "current tools, policy engine and finalizer with `--replay`. Latency, call counts and tokens are the live "
+                      "measurements. Outcomes that differ from what the live run produced at the time:", "",
+                      *([f"- {c}" for c in changed] or ["- none"])]
+        write_reports(out_dir, replayed, [c for c in all_cases if any(r["case_id"] == c["case_id"] for r in replayed)], model, provenance)
+        print(f"Replayed {len(replayed)} recorded runs through the current code -> {_show(out_dir)}/")
         print("Outcomes that differ from the live run:" if changed else "Every outcome matches the live run.")
         for line in changed:
             print("  " + line)
         return
+
+    # ---- live run. Recorded runs cost model quota to recreate, so they are never discarded implicitly.
+    existing = load(runs_path)
+    if existing and not (args.resume or args.overwrite):
+        sys.exit(f"{_show(runs_path)} already holds {len(existing)} recorded runs. Use --resume to continue them, "
+                 "--replay to re-score them, --out to write elsewhere, or --overwrite to discard them and start again.")
+    # when resuming, a run where the model was unreachable is not a result; redo it
+    rows = [r for r in existing if not r["degraded"] or r.get("model_output_invalid")] if args.resume else []
+    runs_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    if not args.resume and live_path.is_file():
+        live_path.unlink()                           # a fresh live run supersedes an older replay source
+    done = {(r["case_id"], r["architecture"], r["trial"]) for r in rows}
+    print(f"Model: {model}\nCases: {len(cases)}  architectures: {architectures}  trials: {args.trials}  -> {_show(out_dir)}\n")
 
     stopped = None
     with vendor_api(base.vendor_risk_base_url) as a, vendor_api(FIXTURE_API, FIXTURE_DIR / "vendor_risk.json") as b:
@@ -337,7 +364,7 @@ def main() -> None:
                 break
 
     write_reports(out_dir, rows, cases, model)
-    print(f"\nWrote {out_dir.relative_to(ROOT)}/summary.md, results.csv, runs.jsonl")
+    print(f"\nWrote {_show(out_dir)}/summary.md, results.csv, runs.jsonl")
     if stopped:
         sys.exit("Stopped early because the model became unavailable (likely a quota limit). "
                  "Re-run with --resume to finish; completed runs are kept.")

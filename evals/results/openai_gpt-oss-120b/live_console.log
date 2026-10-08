@@ -1,0 +1,47 @@
+Model: openai/gpt-oss-120b
+Cases: 18  architectures: ['single', 'staged']  trials: 1  -> evals/results/openai_gpt-oss-120b
+
+Vendor-risk API (data): already running; (fixtures): started for this run
+
+PASS  DS-01 [single] proceed_to_standard_approval   3714 ms  2 llm  5 tools   3416 tok
+PASS  DS-01 [staged] proceed_to_standard_approval   5092 ms  3 llm  5 tools   5334 tok  (waited 13s for quota)
+PASS  DS-02 [single] route_for_reviews              2624 ms  2 llm  5 tools   3718 tok  (waited 24s for quota)
+PASS  DS-02 [staged] route_for_reviews              6737 ms  3 llm  5 tools   5749 tok  (waited 28s for quota)
+PASS  DS-03 [single] route_for_reviews              2685 ms  2 llm  5 tools   3522 tok  (waited 22s for quota)
+PASS  DS-03 [staged] route_for_reviews              5178 ms  3 llm  5 tools   5305 tok  (waited 34s for quota)
+PASS  DS-04 [single] route_for_reviews              3449 ms  2 llm  5 tools   3898 tok  (waited 23s for quota)
+PASS  DS-04 [staged] route_for_reviews              4128 ms  3 llm  5 tools   5771 tok  (waited 34s for quota)
+PASS  DS-05 [single] route_for_reviews              2917 ms  2 llm  5 tools   3543 tok  (waited 23s for quota)
+PASS  DS-05 [staged] route_for_reviews              4619 ms  3 llm  5 tools   5476 tok  (waited 23s for quota)
+PASS  DS-06 [single] request_clarification          3166 ms  2 llm  5 tools   3630 tok  (waited 22s for quota)
+PASS  DS-06 [staged] request_clarification          4498 ms  3 llm  5 tools   5460 tok  (waited 31s for quota)
+PASS  DS-07 [single] manual_review                  2961 ms  2 llm  5 tools   3792 tok  (waited 24s for quota)
+PASS  DS-07 [staged] manual_review                  4523 ms  3 llm  5 tools   5605 tok  (waited 28s for quota)
+FAIL  DS-08 [single] review_existing_tool_first     4140 ms  2 llm  5 tools   3416 tok  (waited 20s for quota)
+      flags missing ['existing_tool_overlap']
+FAIL  DS-08 [staged] proceed_to_standard_approval   7091 ms  3 llm  5 tools   5202 tok  (waited 28s for quota)
+      action proceed_to_standard_approval, expected ['review_existing_tool_first']; flags missing ['existing_tool_overlap']; escalation: waved through
+PASS  DS-09 [single] manual_review                  2944 ms  2 llm  5 tools   3412 tok  (waited 12s for quota)
+PASS  DS-09 [staged] manual_review                  6491 ms  4 llm  6 tools   7159 tok  (waited 27s for quota)
+FAIL  DS-10 [single] review_existing_tool_first     3571 ms  2 llm  5 tools   3514 tok  (waited 20s for quota)
+      action review_existing_tool_first, expected ['proceed_to_standard_approval']; 2 missing-info items > 0
+PASS  DS-10 [staged] proceed_to_standard_approval   5399 ms  3 llm  5 tools   5155 tok  (waited 30s for quota)
+PASS  FX-01 [single] route_for_reviews              2889 ms  2 llm  5 tools   3434 tok  (waited 19s for quota)
+PASS  FX-01 [staged] route_for_reviews              4167 ms  3 llm  5 tools   5142 tok  (waited 32s for quota)
+PASS  FX-02 [single] review_existing_tool_first     4866 ms  2 llm  5 tools   3520 tok  (waited 15s for quota)
+FAIL  FX-02 [staged] route_for_reviews              4919 ms  3 llm  5 tools   5273 tok  (waited 23s for quota)
+      action route_for_reviews, expected ['review_existing_tool_first']
+PASS  FX-03 [single] route_for_reviews              4482 ms  2 llm  5 tools   3755 tok  (waited 16s for quota)
+PASS  FX-03 [staged] route_for_reviews              4122 ms  3 llm  5 tools   5674 tok  (waited 21s for quota)
+PASS  FX-04 [single] route_for_reviews              2857 ms  2 llm  5 tools   3650 tok  (waited 23s for quota)
+PASS  FX-04 [staged] route_for_reviews              4409 ms  3 llm  5 tools   5602 tok  (waited 27s for quota)
+PASS  FX-05 [single] proceed_to_standard_approval   3496 ms  2 llm  5 tools   3259 tok  (waited 15s for quota)
+PASS  FX-05 [staged] proceed_to_standard_approval   3459 ms  3 llm  5 tools   4653 tok  (waited 18s for quota)
+PASS  FX-06 [single] route_for_reviews              3142 ms  2 llm  5 tools   3412 tok  (waited 16s for quota)
+PASS  FX-06 [staged] route_for_reviews              4365 ms  3 llm  5 tools   5112 tok  (waited 32s for quota)
+PASS  FX-07 [single] manual_review                  4763 ms  2 llm  5 tools   3219 tok  (waited 11s for quota)
+PASS  FX-07 [staged] manual_review                  6515 ms  3 llm  5 tools   4825 tok  (waited 14s for quota)
+PASS  FX-08 [single] request_clarification          3973 ms  2 llm  5 tools   3743 tok  (waited 17s for quota)
+PASS  FX-08 [staged] request_clarification          4757 ms  3 llm  5 tools   5599 tok  (waited 26s for quota)
+
+Wrote evals/results/openai_gpt-oss-120b/summary.md, results.csv, runs.jsonl
