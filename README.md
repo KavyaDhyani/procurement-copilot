@@ -37,9 +37,11 @@ Then open http://127.0.0.1:8501.
 
 | Provider | Variables | Notes |
 |---|---|---|
-| Groq (used for all results here) | `GROQ_API_KEY`, optional `MODEL_NAME` | default model `openai/gpt-oss-120b`; free key at console.groq.com/keys |
-| Google Gemini | `GEMINI_API_KEY`, optional `MODEL_NAME` | implemented through Gemini's OpenAI-compatible endpoint; not exercised in this repo's results |
+| Google Gemini (recommended) | `GEMINI_API_KEY`, optional `MODEL_NAME` | default model `gemini-3.5-flash-lite`; free key at aistudio.google.com/apikey |
+| Groq | `GROQ_API_KEY`, optional `MODEL_NAME` | default model `openai/gpt-oss-120b`; free key at console.groq.com/keys; 8,000 tokens/minute on the free tier |
 | Other | `LLM_BASE_URL`, `LLM_API_KEY`, `MODEL_NAME` | any chat-completions endpoint that supports `json_schema` response format |
+
+If more than one key is set, choose with `LLM_PROVIDER=gemini` or `LLM_PROVIDER=groq`. `LLM_PROVIDER=none` switches the model off.
 
 Without a key the app still runs: it returns the deterministic checks only and says so.
 
@@ -98,7 +100,7 @@ flowchart LR
 - **A - single-agent baseline** (`src/agents/single.py`). One agent plans the evidence gathering, reads the results and recommends.
 - **B - staged, two agents** (`src/agents/staged.py`). A Procurement Analyst gathers evidence and writes a structured pack without recommending. A Policy/Risk Reviewer with no tools checks the pack against the tool results, can reject findings, and chooses the action. The reviewer sees structured request fields, deterministic tool summaries and the policy output, but not the requester's free-text justification or vendor notes.
 
-Structured output is enforced with strict JSON schemas at every model call. Tool requests are **batched** in one structured response rather than made through native function calling: on the models used, native calling returns one tool per turn and cannot be combined with schema-constrained output, which would roughly triple token use against a free-tier limit of 8,000 tokens per minute.
+Structured output is enforced with strict JSON schemas at every model call. Tool requests are **batched** in one structured response rather than made through native function calling. The design was built against Groq's gpt-oss models, where native calling returned one tool per turn and could not be combined with schema-constrained output; batching cut token use to about a third against a free-tier limit of 8,000 tokens per minute. The same request format worked unchanged on Gemini.
 
 Details, responsibilities and escalation conditions: [`docs/workflow_and_architecture.md`](docs/workflow_and_architecture.md).
 
@@ -117,14 +119,15 @@ Details, responsibilities and escalation conditions: [`docs/workflow_and_archite
 ## Evaluation
 
 ```bash
-python -m pytest tests -q                                # 133 tests, no model required
+python -m pytest tests -q                                # 135 tests, no model required
 python evals/run_public_evals.py --architecture single   # the starter's six public cases
 python evals/run_public_evals.py --architecture staged
-MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay   # reproduce the 20b table offline, no key needed
+MODEL_NAME=gemini-3.5-flash-lite python evals/run_comparison.py --replay   # reproduce the Flash-Lite table offline, no key needed
+MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay      # same for gpt-oss-20b
 python evals/run_comparison.py --out evals/results/my-run               # a new live A-vs-B run on the same 18 cases
 ```
 
-`--replay` feeds the recorded model outputs back through the real tools, policy engine and finalizer, so the published 20b numbers can be reproduced without a model key. A live run needs a key and about 160,000 tokens; on Groq's free tier that is roughly 25 minutes and most of one model's daily quota.
+`--replay` feeds the recorded model outputs back through the real tools, policy engine and finalizer, so the published Flash-Lite and 20b numbers can be reproduced without a model key. A live run needs a key and about 90 model calls (130,000-160,000 tokens): a few minutes on Gemini Flash-Lite, about 25 minutes and most of a day's quota on Groq's free tier.
 
 `run_comparison.py` runs both architectures back to back on the same 18 cases: the 10 requests in `data/requests.json` (which include the six public cases) and 8 fixture cases on a separate data snapshot (`evals/fixtures/data/`) that stand in for hidden cases - injection inside vendor notes, a vendor unknown to both sources, sensitive data described only in free text, a false pre-approval claim, exact threshold boundaries, a one-day-expired review, and an API timeout.
 
@@ -141,32 +144,33 @@ It also records the model's proposed action **before** the code guardrail, the p
 
 ## Evaluation results
 
-Both architectures, the same 18 cases, one trial per case, on two Groq-hosted models. Full reports: [`evals/results/openai_gpt-oss-120b/summary.md`](evals/results/openai_gpt-oss-120b/summary.md) and [`evals/results/openai_gpt-oss-20b/summary.md`](evals/results/openai_gpt-oss-20b/summary.md).
+Both architectures, the same 18 cases, one trial per case, on three models. Full reports are in `evals/results/<model>/summary.md`.
 
-| Metric | A single, 120b | B staged, 120b | A single, 20b | B staged, 20b |
-|---|---:|---:|---:|---:|
-| **Cases passing all four criteria** | **16/18** | **16/18** | **16/18** | **16/18** |
-| Correct next action | 17/18 | 16/18 | 16/18 | 16/18 |
-| Evidence grounded | 18/18 | 18/18 | 18/18 | 18/18 |
-| Policy + deterministic rules followed | 16/18 | 17/18 | 17/18 | 18/18 |
-| Human escalation correct | 18/18 | 17/18 | 17/18 | 18/18 |
-| Model's own proposal correct, before guardrails | not recorded | not recorded | 15/18 | 13/18 |
-| Avg processing latency (model + tools) | 3.5 s | 5.0 s | 2.4 s | 3.7 s |
-| Avg LLM calls | 2.00 | 3.06 | 2.06 | 3.06 |
-| Avg tool calls | 5.00 | 5.06 | 5.06 | 5.06 |
-| Avg tokens per request | 3,547 | 5,450 | 3,519 | 5,184 |
-| Avg wait for free-tier quota (not in latency) | 18 s | 26 s | 19 s | 31 s |
-| Model calls retried | not recorded | not recorded | 0 | 7 |
+| Model | Architecture | Cases passing all four criteria | Correct next action | Avg latency | LLM calls | Tool calls | Tokens |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Gemini 3.5 Flash-Lite | A single | 17/18 | 17/18 | 4.2 s | 2.00 | 5.00 | 2,845 |
+| Gemini 3.5 Flash-Lite | B staged | 18/18 | 18/18 | 6.6 s | 3.00 | 5.00 | 4,331 |
+| gpt-oss-120b (Groq) | A single | 16/18 | 17/18 | 3.5 s | 2.00 | 5.00 | 3,547 |
+| gpt-oss-120b (Groq) | B staged | 16/18 | 16/18 | 5.0 s | 3.06 | 5.06 | 5,450 |
+| gpt-oss-20b (Groq) | A single | 16/18 | 16/18 | 2.4 s | 2.06 | 5.06 | 3,519 |
+| gpt-oss-20b (Groq) | B staged | 16/18 | 16/18 | 3.7 s | 3.06 | 5.06 | 5,184 |
+| **All three** | **A single** | **49/54** | | | | | |
+| **All three** | **B staged** | **50/54** | | | | | |
 
-The six public cases met the starter's minimum checks on both architectures (6/6 each on 20b; on 120b all six passed the stricter four-criteria scoring). With the model switched off (`LLM_PROVIDER=none`), the deterministic layer alone also passes all six minimum checks.
+Latency is model plus tool time. Waiting for free-tier quota is excluded and reported separately in each `results.csv`: on Groq it averaged 18-19 s per request for A and 26-31 s for B; on Gemini Flash-Lite it was 0 s for A and 6 s for B.
 
-**What failed.** Eight of 72 runs, and every one is in the single judgement left to the model: whether an existing tool already covers the need.
+- **Evidence grounded:** 18/18 for every model and architecture. On the two fully recorded models, 230 model-written findings were kept and none discarded. The check covers figures, dates, product names and evidence ids, not every word.
+- **Public cases:** `python evals/run_public_evals.py` passes 6/6 for both `--architecture single` and `--architecture staged` on Flash-Lite. Inside the comparison, the six public cases also met the starter's minimum checks on both architectures on 20b; on 120b all six passed the stricter four-criteria scoring. With the model switched off (`LLM_PROVIDER=none`) the deterministic layer alone passes all six.
+- **Mandatory tools skipped by the agent:** none, in any recorded run.
+
+**What failed.** Nine of 108 runs, and every one is in the single judgement left to the model: whether an existing tool already covers the need.
 
 | Run | What happened |
 |---|---|
+| A, Flash-Lite, DS-08 | Judged a duplicate of a company-wide tool to be an expansion and sent it to standard approval |
 | A, 120b, DS-08 | Right action (review existing tool) but the overlap flag was missing. Fixed afterwards: that action now always carries the flag |
 | A, 120b, DS-10 | Asked to review the existing tool for a low-value training pack; should have proceeded |
-| B, 120b, DS-08 | Sent a duplicate of a company-wide tool to standard approval |
+| B, 120b, DS-08 | Sent the duplicate to standard approval |
 | B, 120b, FX-02 | Routed for reviews; should have checked the existing BI tool first because no gap was stated |
 | A, 20b, DS-01 | Asked to review the existing tool for a three-seat add-on; should have proceeded |
 | A, 20b, DS-08 | Proposed clarification, which policy did not allow; the override fell back to standard approval |
@@ -175,26 +179,26 @@ The six public cases met the starter's minimum checks on both architectures (6/6
 
 No run got an approval list, threshold, review expiry, source conflict, outage or injection case wrong. Those are decided in code that both architectures share.
 
-**What the grounding checks found.** On 20b, 120 model-written findings were kept and none were discarded. That is a good result, with the caveat that the check covers figures, dates, product names and evidence ids rather than every word.
-
 **How these numbers were produced.**
 
-- 20b: the complete record is in `runs_live.jsonl`. The table is that record replayed through the final code (`--replay`); one outcome differs from the live run, because a product named "NeuralDesk Business (SW009)" was at first rejected as not in the catalog.
-- 120b: the detailed per-run record was lost to a bug in the first version of the replay mode, so the table was rebuilt from the run's console output (`live_console.log`), which has every run's outcome, action, latency, calls, tokens and failure notes. Counters the console does not print are marked "not recorded". The runner now refuses to discard recorded runs and has tests for that.
-- One prompt change was made after early 120b runs showed both architectures reading "internal documents" as confidential; both full runs use the final prompts. The 20b run was interrupted once and resumed after a retry fix.
+- **Flash-Lite:** one uninterrupted live run on the final code. `runs.jsonl` is the complete record.
+- **20b:** the complete record is `runs_live.jsonl`; the table is that record replayed through the final code (`--replay`). One outcome differs from the live run, because a product named "NeuralDesk Business (SW009)" was at first rejected as not in the catalog. The run was interrupted once and resumed after a retry fix.
+- **120b:** the detailed per-run record was lost to a bug in the first version of the replay mode, so the table was rebuilt from the run's console output (`live_console.log`). Counters the console does not print are marked "not recorded" in its summary. The runner now refuses to discard recorded runs and has tests for that.
+- One prompt change was made after early 120b runs showed both architectures reading "internal documents" as confidential. All three full runs use the final prompts.
 
 ## Comparison and ship decision
 
 **Ship Architecture A, the single agent.** The memo is [`docs/architecture_decision.md`](docs/architecture_decision.md).
 
-- **Quality is indistinguishable.** 16/18 for both architectures on both models, and the failures are of the same kind. Each architecture waved one duplicate request through once.
-- **Cost is consistently different.** B makes one more model call and uses about 50% more tokens and 45-55% more processing time per request. On a tier limited to 8,000 tokens per minute that also means longer queueing.
-- **B was less stable on the smaller model**: 7 retried model calls against 0, and its own proposal needed correcting by the code guardrail more often (4 runs against 2).
-- **B's structural advantage did not show up.** Its reviewer sees no requester free text or vendor notes, but all three injection cases came out right in both architectures, because approvals are outside the model's control in both.
+- **Quality is close to a tie.** A passed 49 of 54 case-runs and B passed 50. B was one case better on Flash-Lite and level on the other two models.
+- **Cost is consistently different.** On all three models B makes one more model call and uses about 50% more tokens and 45-55% more latency per request.
+- **Where B helped.** On the duplicate-tool case (DS-08), B chose correctly on two models where A did not; on the third it was the other way round. A sent that duplicate to standard approval twice, B once.
+- **Why that does not decide it.** The failure is contained: the request still goes to human approvers, and the evidence panel shows the existing product and the rule asking them to confirm it is not a duplicate. A code-level default for ambiguous same-vendor overlap would target the same failure without a second model call, and is the next thing to test.
+- **B's structural advantage did not show up.** Its reviewer sees no requester free text or vendor notes, but every injection case came out right in both architectures, because approvals are outside the model's control in both.
 
-Reliability here comes from the shared parts: the policy engine, mandatory evidence checks, grounding checks and the human decision. A second agent can only re-judge the action, and on this evidence it does that no better while costing half as much again.
+Reliability here comes from the shared parts: the policy engine, mandatory evidence checks, grounding checks and the human decision. One trial per case cannot separate 49/54 from 50/54; if repeated trials showed B reliably catching duplicates that A misses, and a code-level default did not close the gap, B would be the better choice.
 
-**Model choice.** Keep `openai/gpt-oss-120b` as the default. Pass rates were the same, and 20b was about a second faster per request, but with the single agent 20b sent one duplicate request to standard approval while 120b's two failures were a missing flag and one over-cautious check. At 18 cases and one trial this is a weak signal, not proof.
+**Model choice.** Use **Gemini 3.5 Flash-Lite**. It had the best pass rates of the three, used the fewest tokens, and ran the whole comparison with almost no quota waiting, where Groq's free tier pauses about 20-30 s per request. `gpt-oss-120b` is the fallback. Two other Gemini models were tried on a five-case subset and rejected: Gemini 3.8 Flash took 85 s on one request and then returned "high demand" errors, and Gemini 3.5 Flash took 6-22 s per request and hit its per-minute limit. All of this is one trial per case, so treat the ranking as indicative.
 
 ## Assumptions
 
@@ -230,8 +234,8 @@ The full list is in [`docs/workflow_and_architecture.md`](docs/workflow_and_arch
 - **Grounding checks cover figures, dates, product names and evidence ids**, not every word. A finding can still mis-state a non-numeric fact and pass.
 - **The injection scanner is pattern-based** and will miss novel phrasing. The protection that does not depend on it is that approvals are computed in code.
 - **Model-inferred data classes can over-escalate.** A model that reads sensitivity into a benign request adds a review that a human then has to dismiss.
-- **Free-tier rate limits** (8,000 tokens/minute) make back-to-back runs pause for up to a minute.
-- **Not built:** authentication and roles, a real audit store, approver lookup, deployment, a Gemini-path test run.
+- **Free-tier rate limits.** On Groq (8,000 tokens/minute) back-to-back runs pause for up to a minute. Gemini's free-tier limits are not published; Flash-Lite ran the full comparison with only a few short pauses, but its daily allowance was not measured.
+- **Not built:** authentication and roles, a real audit store, approver lookup, deployment.
 
 ## Repository map
 

@@ -175,9 +175,7 @@ def test_model_failure_degrades_to_deterministic_decision(architecture, failure,
     assert "budget_insufficient" in d.risk_flags and d.human_review_required and len(d.evidence) >= 4
 
 
-def test_no_model_configured_still_returns_a_valid_decision(settings, monkeypatch):
-    for name in ("LLM_PROVIDER", "LLM_API_KEY", "LLM_BASE_URL", "GROQ_API_KEY", "GROQ_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
+def test_no_model_configured_still_returns_a_valid_decision(settings):
     result = analyze_request(data_access.get_request("REQ-1001"), "single", settings)
     assert result.degraded and result.decision.required_approvals == ["Manager"]
 

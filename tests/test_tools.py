@@ -142,3 +142,38 @@ def test_scanner_has_no_false_positives_on_legitimate_dataset_text():
               "Sensitive-data use requires Security and Privacy review.",
               "Automation lets agents skip the manual triage process and flag non-standard payment terms."]
     assert [t for t in texts if scan_text(t)] == []
+
+
+# --- model client: provider differences ------------------------------------------------------
+
+def test_rate_limit_delay_is_read_from_header_or_body_or_backed_off():
+    import httpx
+
+    from src.llm import _error_message, _retry_delay
+
+    groq = httpx.Response(429, headers={"retry-after": "7"}, json={"error": {"message": "slow down"}})
+    gemini = httpx.Response(429, json=[{"error": {"message": "quota", "details": [{"retryDelay": "23s"}]}}])
+    bare = httpx.Response(429, text="too many requests")
+    assert _retry_delay(groq, 0) == 7
+    assert _retry_delay(gemini, 0) == 24
+    assert [_retry_delay(bare, attempt) for attempt in range(3)] == [5, 15, 45]
+    assert _error_message(gemini) == "quota" and _error_message(groq) == "slow down"
+
+
+def test_provider_is_selected_from_whichever_key_is_set(monkeypatch):
+    from src.llm import LLMSettings
+
+    for name in ("LLM_PROVIDER", "LLM_API_KEY", "LLM_BASE_URL", "MODEL_NAME", "GROQ_API_KEY", "GROQ_KEY", "GROQ_MODEL",
+                 "GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_KEY", "GEMINI_MODEL", "LLM_REASONING_EFFORT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GEMINI_KEY", "g-key")
+    gemini = LLMSettings.from_env()
+    assert (gemini.provider, gemini.api_key, gemini.reasoning_effort) == ("gemini", "g-key", None)
+    assert "generativelanguage.googleapis.com" in gemini.base_url
+
+    monkeypatch.setenv("GROQ_KEY", "q-key")                 # both set: Groq unless told otherwise
+    assert LLMSettings.from_env().provider == "groq"
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("MODEL_NAME", "some-model")
+    chosen = LLMSettings.from_env()
+    assert (chosen.provider, chosen.api_key, chosen.model) == ("gemini", "g-key", "some-model")

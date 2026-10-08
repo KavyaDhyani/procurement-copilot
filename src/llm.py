@@ -22,8 +22,8 @@ from src.models import Usage
 PROVIDERS = {
     "groq": {"base_url": "https://api.groq.com/openai/v1", "keys": ("GROQ_API_KEY", "GROQ_KEY"),
              "model_env": "GROQ_MODEL", "default_model": "openai/gpt-oss-120b"},
-    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "keys": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
-               "model_env": "GEMINI_MODEL", "default_model": "gemini-3.8-flash"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "keys": ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_KEY"),
+               "model_env": "GEMINI_MODEL", "default_model": "gemini-3.5-flash-lite"},
 }
 
 
@@ -71,6 +71,8 @@ class LLMSettings:
             base_url = env("LLM_BASE_URL") or cfg["base_url"]
             api_key = env("LLM_API_KEY") or next((env(k) for k in cfg["keys"] if env(k)), "")
             model = env("MODEL_NAME") or env(cfg["model_env"]) or cfg["default_model"]
+        elif provider == "none":
+            raise LLMError("The model is switched off (LLM_PROVIDER=none); only deterministic checks run.")
         else:
             raise LLMError("No model provider configured. Set GROQ_API_KEY (or GEMINI_API_KEY, or LLM_BASE_URL + "
                            "LLM_API_KEY + MODEL_NAME) in .env - see .env.example.")
@@ -181,7 +183,7 @@ class OpenAICompatLLM:
             if response.status_code == 429:
                 last_error = "rate limited (HTTP 429)"
                 usage.llm_retries += 1
-                self._sleep_for_quota(_seconds(response.headers.get("retry-after")) or 5.0, usage)
+                self._sleep_for_quota(_retry_delay(response, attempt), usage)
                 continue
             if response.status_code >= 500:
                 last_error = f"model endpoint error (HTTP {response.status_code})"
@@ -215,8 +217,19 @@ class OpenAICompatLLM:
         raise LLMError(f"Model call failed after retries: {last_error}", invalid_output=invalid_output)
 
 
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    """How long a 429 asks us to wait: the Retry-After header (Groq), a retryDelay in the body (Gemini), else back off."""
+    header = _seconds(response.headers.get("retry-after"))
+    if header is not None:
+        return header
+    in_body = re.search(r'"retryDelay"\s*:\s*"([\d.]+)s"', response.text)
+    return float(in_body.group(1)) + 1.0 if in_body else 5.0 * 3 ** attempt      # 5 s, 15 s, 45 s
+
+
 def _error_message(response: httpx.Response) -> str:
     try:
-        return str(response.json().get("error", {}).get("message", response.text))[:300]
+        body = response.json()
+        body = body[0] if isinstance(body, list) and body else body
+        return str(body.get("error", {}).get("message", response.text))[:300]
     except (ValueError, AttributeError):
         return response.text[:300]

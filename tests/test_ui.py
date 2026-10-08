@@ -1,4 +1,4 @@
-"""Drives the Streamlit app headlessly. No model key is set, so runs take the deterministic path."""
+"""Drives the Streamlit app headlessly. The suite disables the model (conftest), so runs take the deterministic path."""
 from __future__ import annotations
 
 import pytest
@@ -7,13 +7,8 @@ from streamlit.testing.v1 import AppTest
 from src import audit
 from src.config import ROOT
 
-MODEL_ENV = ("LLM_PROVIDER", "LLM_API_KEY", "LLM_BASE_URL", "GROQ_API_KEY", "GROQ_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")
-
-
 @pytest.fixture
 def app(api_url, monkeypatch, tmp_path):
-    for name in MODEL_ENV:
-        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("VENDOR_RISK_BASE_URL", api_url)
     monkeypatch.delenv("MOCK_VENDOR_RISK_FILE", raising=False)
     monkeypatch.setattr(audit, "AUDIT_LOG", tmp_path / "human_review_log.jsonl")

@@ -14,7 +14,8 @@ Runs the six public cases in `public_cases.json`, validates the output schema, a
 ## 2. A-vs-B comparison
 
 ```bash
-MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay   # reproduce the committed 20b table; no key, no quota
+MODEL_NAME=gemini-3.5-flash-lite python evals/run_comparison.py --replay   # reproduce a committed table; no key, no quota
+MODEL_NAME=openai/gpt-oss-20b python evals/run_comparison.py --replay
 
 python evals/run_comparison.py --out evals/results/my-run   # new live run: all 18 cases, both architectures
 python evals/run_comparison.py --cases DS-06,FX-04 --out evals/results/scratch
@@ -38,7 +39,7 @@ Output goes to `evals/results/<model>/`:
 | `runs_live.jsonl` | the same, exactly as the live run produced it; the source for `--replay` |
 | `live_console.log` | what the live run printed |
 
-**Committed results.** `openai_gpt-oss-20b/` has all of the above. `openai_gpt-oss-120b/` has only `summary.md`, `results.csv` and `live_console.log`: its detailed record was lost during development, and `reconstruct_from_console.py` rebuilt the report from the console log, marking the counters the console does not print as "not recorded".
+**Committed results.** `gemini-3.5-flash-lite/` is one uninterrupted live run on the final code, so its `runs.jsonl` is the live record. `openai_gpt-oss-20b/` has all of the above. `openai_gpt-oss-120b/` has only `summary.md`, `results.csv` and `live_console.log`: its detailed record was lost during development, and `reconstruct_from_console.py` rebuilt the report from the console log, marking the counters the console does not print as "not recorded".
 
 ### Cases (`cases.json`)
 
@@ -66,6 +67,6 @@ Deterministic; no LLM judge.
 
 ### Limits of this evaluation
 
-- 18 cases and one trial each: enough to find failures, not enough to prove a difference between architectures.
+- 18 cases and one trial each: enough to find failures, not enough to prove a difference between architectures (the totals are 49/54 and 50/54).
 - Expected outcomes and the policy engine have the same author.
 - Approvals and policy flags come from shared code, so the two architectures can only differ on the action, model-written findings, model-inferred data classes and cost. That is a property of the design, and it is the main reason the comparison comes out the way it does.

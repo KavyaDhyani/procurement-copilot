@@ -17,6 +17,17 @@ from src.config import DEFAULT_DATA_DIR, Settings
 from src.llm import LLMError
 
 
+@pytest.fixture(autouse=True)
+def no_real_model(monkeypatch):
+    """No test may reach a real model, whatever keys the developer's .env holds.
+
+    Tests that need model behaviour pass a scripted model explicitly; everything else sees "no provider".
+    """
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+    for name in ("MODEL_NAME", "LLM_API_KEY", "LLM_BASE_URL", "LLM_REASONING_EFFORT"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture(scope="session")
 def api_url() -> str:
     with socket.socket() as s:
