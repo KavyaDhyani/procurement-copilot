@@ -8,7 +8,7 @@
 
 Writes, under evals/results/<model>/:
     runs.jsonl    every run in full (decision, ledger, guardrail events, usage) - the audit trail
-    results.csv   one row per run, in the shape of templates/evaluation_results_template.csv
+    results.csv   one row per run, in the columns of the starter's evaluation-results template
     summary.md    the comparison table and per-case outcomes
 
 Scoring is deterministic (no LLM judge). Per run:

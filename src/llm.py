@@ -74,7 +74,7 @@ class LLMSettings:
         elif provider == "none":
             raise LLMError("The model is switched off (LLM_PROVIDER=none); only deterministic checks run.")
         else:
-            raise LLMError("No model provider configured. Set GROQ_API_KEY (or GEMINI_API_KEY, or LLM_BASE_URL + "
+            raise LLMError("No model provider configured. Set GEMINI_API_KEY (or GROQ_API_KEY, or LLM_BASE_URL + "
                            "LLM_API_KEY + MODEL_NAME) in .env - see .env.example.")
         if not (base_url and api_key and model):
             raise LLMError(f"Model provider '{provider}' is missing a base URL, API key or model name - see .env.example.")

@@ -340,9 +340,6 @@ TOOLS: dict[str, ToolSpec] = {spec.name: spec for spec in [
              _policy_args, _evaluate_policy),
 ]}
 
-MANDATORY_TOOLS = ("check_budget", "search_software_catalog", "lookup_vendor_registry", "get_vendor_risk", "evaluate_policy_rules")
-
-
 def tool_request_schema() -> dict:
     """JSON schema for one tool request: a tagged union over the registry (used for strict structured output)."""
     return {"anyOf": [

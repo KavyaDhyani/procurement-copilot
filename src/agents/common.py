@@ -16,8 +16,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.models import DATA_CLASSES, OVERLAP_LEVELS, ACTION_LABELS, ProcurementRequest, ToolCall
-from src.tools import TOOLS, RunContext, tool_catalog_text, tool_request_schema
+from src.models import ACTION_LABELS, OVERLAP_LEVELS, ProcurementRequest, ToolCall
+from src.tools import RunContext, tool_catalog_text, tool_request_schema
 
 MAX_TOOL_REQUESTS_PER_ROUND = 8
 MAX_FOLLOW_UP_ROUNDS = 1
@@ -224,7 +224,3 @@ def ensure_policy_evaluated(ctx: RunContext) -> None:
     """Policy evaluation is mandatory. If the agent did not ask for it, the harness runs it (and the ledger shows that)."""
     if ctx.assessment is None:
         ctx.call("evaluate_policy_rules", {"data_classes": []}, requested_by="harness")
-
-
-def agent_requested_tools(ctx: RunContext) -> set[str]:
-    return {e.tool for e in ctx.ledger if e.requested_by == "agent" and e.tool in TOOLS}

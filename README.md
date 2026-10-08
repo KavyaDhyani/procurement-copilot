@@ -121,7 +121,7 @@ Details, responsibilities and escalation conditions: [`docs/workflow_and_archite
 ## Evaluation
 
 ```bash
-python -m pytest tests -q                                # 137 tests, no model required
+python -m pytest tests -q                                # 138 tests, no model required
 python evals/run_public_evals.py --architecture single   # the starter's six public cases
 python evals/run_public_evals.py --architecture staged
 MODEL_NAME=gemini-3.5-flash-lite python evals/run_comparison.py --replay   # reproduce the Flash-Lite table offline, no key needed
