@@ -71,6 +71,9 @@ def test_report_only_does_not_modify_recorded_runs(recorded, monkeypatch):
 
 def test_fresh_live_run_refuses_to_discard_recorded_runs(recorded, monkeypatch):
     out, _ = recorded
+    # a live run needs a configured provider; this one is never called because the run is refused first
+    for name, value in {"LLM_PROVIDER": "custom", "LLM_BASE_URL": "http://127.0.0.1:9", "LLM_API_KEY": "not-a-real-key"}.items():
+        monkeypatch.setenv(name, value)
     original = (out / "runs.jsonl").read_text(encoding="utf-8")
     with pytest.raises(SystemExit) as stop:
         run_cli(monkeypatch, "--out", str(out), "--cases", "DS-08")
